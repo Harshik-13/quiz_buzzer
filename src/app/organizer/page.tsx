@@ -17,11 +17,50 @@ function loadStoredSecret(): string {
 
 export default function OrganizerPage() {
   const [secret, setSecret] = useState(loadStoredSecret)
-  const [authenticated, setAuthenticated] = useState(!!loadStoredSecret())
+  const [authenticated, setAuthenticated] = useState(false)
+  const [verifying, setVerifying] = useState(!!loadStoredSecret())
   const [state, setState] = useState<GameState | null>(null)
   const [error, setError] = useState('')
   const [sending, setSending] = useState('')
   const secretRef = useRef(secret)
+
+  useEffect(() => {
+    const stored = loadStoredSecret()
+    if (!stored) {
+      setVerifying(false)
+      return
+    }
+
+    let cancelled = false
+    const verify = async () => {
+      try {
+        const res = await fetch('/api/auth', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ secret: stored }),
+        })
+        if (!cancelled) {
+          if (res.status !== 401) {
+            secretRef.current = stored
+            setAuthenticated(true)
+          } else {
+            sessionStorage.removeItem(SECRET_KEY)
+            setSecret('')
+          }
+        }
+      } catch {
+        if (!cancelled) {
+          sessionStorage.removeItem(SECRET_KEY)
+          setSecret('')
+        }
+      } finally {
+        if (!cancelled) setVerifying(false)
+      }
+    }
+
+    verify()
+    return () => { cancelled = true }
+  }, [])
 
   useEffect(() => {
     if (!authenticated) return
@@ -67,15 +106,44 @@ export default function OrganizerPage() {
     }
   }, [])
 
-  const handleAuth = () => {
+  const handleAuth = async () => {
     const trimmed = secret.trim()
     if (!trimmed) {
       setError('Enter admin secret.')
       return
     }
-    secretRef.current = trimmed
-    setAuthenticated(true)
-    sessionStorage.setItem(SECRET_KEY, trimmed)
+
+    setError('')
+    setSending('auth')
+
+    try {
+      const res = await fetch('/api/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ secret: trimmed }),
+      })
+
+      if (res.status === 401) {
+        setError('Invalid admin secret.')
+        return
+      }
+
+      secretRef.current = trimmed
+      setAuthenticated(true)
+      sessionStorage.setItem(SECRET_KEY, trimmed)
+    } catch {
+      setError('Network error. Try again.')
+    } finally {
+      setSending('')
+    }
+  }
+
+  if (verifying) {
+    return (
+      <div className="flex flex-1 items-center justify-center p-8">
+        <p className="text-sm text-zinc-400">Verifying session...</p>
+      </div>
+    )
   }
 
   if (!authenticated) {
@@ -103,9 +171,10 @@ export default function OrganizerPage() {
           </div>
           <button
             onClick={handleAuth}
-            className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+            disabled={sending === 'auth'}
+            className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
           >
-            Authenticate
+            {sending === 'auth' ? 'Verifying...' : 'Authenticate'}
           </button>
         </div>
       </div>
