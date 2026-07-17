@@ -22,6 +22,13 @@ export interface GameState {
 
 export type QuizStatus = 'DRAFT' | 'PUBLISHED' | 'RUNNING' | 'FINISHED' | 'ARCHIVED'
 
+export interface LiveState {
+  currentQuestion: number
+  status: string
+  participants: { id: string; name: string }[]
+  buzzQueue: { participantId: string; participantName: string; rank: number }[]
+}
+
 export interface QuizStats {
   totalParticipants: number
   totalQuestions: number

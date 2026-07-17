@@ -2,22 +2,17 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import type { Quiz } from '@/lib/types'
+import type { Quiz, LiveState } from '@/lib/types'
+import { loadStoredSecret, SECRET_KEY, adminHeaders as makeHeaders } from '@/lib/auth-client'
 import Link from 'next/link'
 
 const POLL_INTERVAL = 300
-const SECRET_KEY = 'admin_secret'
-
-function loadStoredSecret(): string {
-  if (typeof window === 'undefined') return ''
-  try { return sessionStorage.getItem(SECRET_KEY) || '' } catch { return '' }
-}
 
 export default function QuizManagePage() {
   const { publicId } = useParams<{ publicId: string }>()
   const router = useRouter()
   const [quiz, setQuiz] = useState<Quiz | null>(null)
-  const [state, setState] = useState<{ currentQuestion: number; status: string; participants: { id: string; name: string }[]; buzzQueue: { participantId: string; participantName: string; rank: number }[] } | null>(null)
+  const [state, setState] = useState<LiveState | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [sending, setSending] = useState('')
@@ -25,10 +20,7 @@ export default function QuizManagePage() {
   const [copied, setCopied] = useState(false)
   const secretRef = useRef(loadStoredSecret())
 
-  const adminHeaders = useCallback(() => ({
-    'Content-Type': 'application/json',
-    'x-admin-secret': secretRef.current,
-  }), [])
+  const adminHeaders = useCallback(() => makeHeaders(secretRef.current), [])
 
   useEffect(() => {
     const stored = loadStoredSecret()

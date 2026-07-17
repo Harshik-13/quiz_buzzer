@@ -39,7 +39,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ pub
   }
 
   const participant: Participant = { id: uuid(), name: trimmed }
-  const result = await atomicJoinQuiz(quiz.id, participant, quiz.status)
+  const result = await atomicJoinQuiz(quiz.id, participant)
   if ('error' in result) {
     return Response.json(result, { status: 400 })
   }

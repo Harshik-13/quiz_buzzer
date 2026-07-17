@@ -3,13 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Quiz } from '@/lib/types'
-
-const SECRET_KEY = 'admin_secret'
-
-function loadStoredSecret(): string {
-  if (typeof window === 'undefined') return ''
-  try { return sessionStorage.getItem(SECRET_KEY) || '' } catch { return '' }
-}
+import { loadStoredSecret, SECRET_KEY, adminHeaders as makeHeaders } from '@/lib/auth-client'
 
 type Tab = 'live' | 'draft' | 'all'
 
@@ -30,10 +24,7 @@ export default function DashboardPage() {
   const [authChecked, setAuthChecked] = useState(false)
   const secretRef = useRef(loadStoredSecret())
 
-  const adminHeaders = useCallback(() => ({
-    'Content-Type': 'application/json',
-    'x-admin-secret': secretRef.current,
-  }), [])
+  const adminHeaders = useCallback(() => makeHeaders(secretRef.current), [])
 
   useEffect(() => {
     setOrigin(window.location.origin)
@@ -262,9 +253,7 @@ export default function DashboardPage() {
                 {q.status === 'RUNNING' ? (
                   <button onClick={() => router.push(`/quiz/${q.publicId}/manage`)} className="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-green-700">Open Control Panel</button>
                 ) : q.status === 'PUBLISHED' ? (
-                  <>
-                    <button onClick={() => router.push(`/quiz/${q.publicId}/manage`)} className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700">Open</button>
-                  </>
+                  <button onClick={() => router.push(`/quiz/${q.publicId}/manage`)} className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700">Open</button>
                 ) : q.status === 'FINISHED' || q.status === 'ARCHIVED' ? (
                   <button onClick={() => router.push(`/quiz/${q.publicId}/manage`)} className="rounded-lg border px-3 py-1.5 text-xs font-semibold hover:bg-zinc-50">View</button>
                 ) : (
@@ -284,8 +273,8 @@ export default function DashboardPage() {
                 )}
                 {q.status === 'ARCHIVED' && (
                   <button onClick={async () => {
-                    await fetch(`/api/quizzes/${q.id}`, { method: 'PUT', headers: adminHeaders(), body: JSON.stringify({ status: 'DRAFT' }) });
-                    await loadQuizzes();
+                    await fetch(`/api/quizzes/${q.id}`, { method: 'PUT', headers: adminHeaders(), body: JSON.stringify({ status: 'DRAFT' }) })
+                    await loadQuizzes()
                   }} className="rounded-lg border px-3 py-1.5 text-xs font-semibold hover:bg-zinc-50">Restore</button>
                 )}
                 {deleteConfirm === q.id ? (

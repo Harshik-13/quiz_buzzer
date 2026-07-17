@@ -15,9 +15,8 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  let organizerId: string
   try {
-    organizerId = requireAdmin(request)
+    requireAdmin(request)
   } catch {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }

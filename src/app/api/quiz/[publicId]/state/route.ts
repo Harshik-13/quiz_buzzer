@@ -20,10 +20,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ pub
     })
   }
 
-  return new Response(JSON.stringify(state), {
+  return Response.json(state, {
     status: 200,
     headers: {
-      'Content-Type': 'application/json',
       'Cache-Control': 'no-cache, no-store, must-revalidate',
     },
   })

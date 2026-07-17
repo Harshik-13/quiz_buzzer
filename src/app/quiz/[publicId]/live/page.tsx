@@ -2,32 +2,24 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import type { Quiz } from '@/lib/types'
+import type { Quiz, LiveState } from '@/lib/types'
+import { loadStoredSecret, SECRET_KEY, adminHeaders as makeHeaders } from '@/lib/auth-client'
 import Link from 'next/link'
 
 const POLL_INTERVAL = 300
-const SECRET_KEY = 'admin_secret'
-
-function loadStoredSecret(): string {
-  if (typeof window === 'undefined') return ''
-  try { return sessionStorage.getItem(SECRET_KEY) || '' } catch { return '' }
-}
 
 export default function LiveQuizPage() {
   const { publicId } = useParams<{ publicId: string }>()
   const router = useRouter()
   const [quiz, setQuiz] = useState<Quiz | null>(null)
-  const [liveState, setLiveState] = useState<{ currentQuestion: number; status: string; participants: { id: string; name: string }[]; buzzQueue: { participantId: string; participantName: string; rank: number }[] } | null>(null)
+  const [liveState, setLiveState] = useState<LiveState | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [sending, setSending] = useState('')
   const [finished, setFinished] = useState(false)
   const secretRef = useRef(loadStoredSecret())
 
-  const adminHeaders = useCallback(() => ({
-    'Content-Type': 'application/json',
-    'x-admin-secret': secretRef.current,
-  }), [])
+  const adminHeaders = useCallback(() => makeHeaders(secretRef.current), [])
 
   useEffect(() => {
     const stored = loadStoredSecret()
@@ -239,7 +231,7 @@ export default function LiveQuizPage() {
 
       <div className="grid grid-cols-2 gap-6">
         <div className="rounded-xl border p-5 shadow-sm">
-          <h2 className="mb-3 text-base font-semibold text-white">Buzz Rankings</h2>
+          <h2 className="mb-3 text-base font-semibold text-zinc-800">Buzz Rankings</h2>
           {buzzQueue.length === 0 ? (
             <p className="text-sm text-black">No buzzes yet.</p>
           ) : (
@@ -262,7 +254,7 @@ export default function LiveQuizPage() {
         </div>
 
         <div className="rounded-xl border p-5 shadow-sm">
-          <h2 className="mb-3 text-base font-semibold text-white">Participants <span className="text-sm font-normal text-white">({participants.length})</span></h2>
+          <h2 className="mb-3 text-base font-semibold text-zinc-800">Participants <span className="text-sm font-normal text-zinc-500">({participants.length})</span></h2>
           {participants.length === 0 ? (
             <p className="text-sm text-black">No participants yet.</p>
           ) : (

@@ -194,7 +194,7 @@ export default function QuizParticipantPage() {
   const q = state?.currentQuestion ?? 0
   const totalQuestions = state?.totalQuestions ?? quizInfo.totalQuestions
   const status = state?.status ?? 'CLOSED'
-  const myBuzz = state?.buzzQueue?.find(b => b.participantId === participant.id)
+  const myBuzz = state?.buzzQueue.find(b => b.participantId === participant.id)
   const hasBuzzed = !!myBuzz
   const buzzDisabled = buzzing || hasBuzzed || status !== 'OPEN'
 

@@ -2,17 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-
-const SECRET_KEY = 'admin_secret'
-
-function loadStoredSecret(): string {
-  if (typeof window === 'undefined') return ''
-  try {
-    return sessionStorage.getItem(SECRET_KEY) || ''
-  } catch {
-    return ''
-  }
-}
+import { loadStoredSecret, SECRET_KEY } from '@/lib/auth-client'
 
 export default function OrganizerPage() {
   const router = useRouter()

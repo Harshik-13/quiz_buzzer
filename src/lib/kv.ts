@@ -51,7 +51,6 @@ function clone<T>(v: T): T {
   try { return structuredClone(v) } catch { return JSON.parse(JSON.stringify(v)) }
 }
 
-const STATE_KEY = 'game:state'
 const INDEX_KEY = 'quiz:index'
 const PUBLIC_ID_PREFIX = 'publicId:'
 
@@ -63,7 +62,6 @@ const DEFAULT_STATE: GameState = {
   buzzQueue: [],
 }
 
-let memoryState: GameState = clone(DEFAULT_STATE)
 let memoryQuizStates: Map<string, GameState> = new Map()
 let memoryQuizzes: Quiz[] = []
 let memoryPublicIds: Map<string, string> = new Map()
@@ -75,38 +73,6 @@ function generatePublicId(): string {
     result += chars.charAt(Math.floor(Math.random() * chars.length))
   }
   return result
-}
-
-// ── Game State (legacy global, kept for backward compat) ──
-
-export async function getState(): Promise<GameState> {
-  if (kv) {
-    try {
-      const state = await kv.get<GameState>(STATE_KEY)
-      if (state) return state
-      await kv.set(STATE_KEY, DEFAULT_STATE)
-      return { ...DEFAULT_STATE }
-    } catch {
-      if (process.env.NODE_ENV === 'production') throw new Error('Vercel KV is unavailable.')
-    }
-  } else if (process.env.NODE_ENV === 'production') {
-    throw new Error('Vercel KV is not configured.')
-  }
-  return clone(memoryState)
-}
-
-export async function setState(state: GameState): Promise<void> {
-  if (kv) {
-    try {
-      await kv.set(STATE_KEY, state)
-    } catch {
-      if (process.env.NODE_ENV === 'production') throw new Error('Vercel KV is unavailable.')
-      memoryState = clone(state)
-    }
-  } else {
-    if (process.env.NODE_ENV === 'production') throw new Error('Vercel KV is not configured.')
-    memoryState = clone(state)
-  }
 }
 
 // ── Per-Quiz Game State ──
@@ -333,16 +299,6 @@ export async function duplicateQuiz(id: string): Promise<Quiz | null> {
   return quiz
 }
 
-// ── Active Quiz (kept for legacy compatibility) ──
-
-export async function getActiveQuizId(): Promise<string | null> {
-  return null
-}
-
-export async function setActiveQuizId(_id: string | null): Promise<void> {
-  // no-op; each quiz manages its own state now
-}
-
 export async function activateQuiz(id: string): Promise<Quiz | null> {
   const quiz = await getQuiz(id)
   if (!quiz) return null
@@ -365,10 +321,6 @@ export async function activateQuiz(id: string): Promise<Quiz | null> {
   }
   await setQuizState(id, gameState)
   return quiz
-}
-
-export async function syncQuizFromState(): Promise<void> {
-  // no-op; quiz state is managed per-quiz now
 }
 
 // ── Lua Scripts ──
@@ -495,7 +447,7 @@ export async function atomicBuzzForQuiz(quizId: string, participantId: string): 
   })
 }
 
-export async function atomicJoinQuiz(quizId: string, participant: Participant, quizStatus: string): Promise<Participant | { error: string }> {
+export async function atomicJoinQuiz(quizId: string, participant: Participant): Promise<Participant | { error: string }> {
   if (kv) {
     const result = await kv.eval<string[], string>(JOIN_LUA, [`quiz:${quizId}:state`], [participant.id, participant.name])
     return JSON.parse(result)
