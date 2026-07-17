@@ -77,6 +77,10 @@ export default function QuizManagePage() {
       if (!res.ok) { const d = await res.json(); setError(d.error || 'Request failed') }
       else {
         const data = await res.json()
+        if (data.status === 'RUNNING') {
+          router.push(`/quiz/${publicId}/live`)
+          return
+        }
         if (data.status === 'FINISHED') {
           const listRes = await fetch('/api/quizzes', { headers: adminHeaders() })
           if (listRes.ok) {
@@ -89,7 +93,7 @@ export default function QuizManagePage() {
       }
     } catch { setError('Network error') }
     finally { setSending('') }
-  }, [publicId, adminHeaders])
+  }, [publicId, adminHeaders, router])
 
   const copyLink = async () => {
     try {
@@ -166,68 +170,13 @@ export default function QuizManagePage() {
       )}
 
       {(quiz.status === 'RUNNING') && (
-        <>
-          <div className="rounded-xl border p-6 shadow-sm">
-            <div className="mb-4 flex items-baseline justify-between">
-              <div className="flex items-baseline gap-3">
-                <span className="text-lg font-semibold">
-                  Question {q > 0 ? `${q} of ${quiz.totalQuestions}` : '\u2014'}
-                </span>
-                {questionStatus === 'OPEN' ? (
-                  <span className="rounded-full bg-green-100 px-3 py-0.5 text-sm font-medium text-green-700">Open</span>
-                ) : (
-                  <span className="rounded-full bg-zinc-100 px-3 py-0.5 text-sm font-medium text-zinc-500">Closed</span>
-                )}
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-3">
-              {questionStatus === 'CLOSED' && (
-                <button onClick={() => callApi(`/api/quizzes/${quiz.id}/start`)} disabled={sending !== ''} className="rounded-lg bg-green-600 px-5 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50">
-                  {sending === `/api/quizzes/${quiz.id}/start` ? 'Opening...' : 'Start'}
-                </button>
-              )}
-              {questionStatus === 'OPEN' && (
-                <button onClick={() => callApi(`/api/quizzes/${quiz.id}/end`)} disabled={sending !== ''} className="rounded-lg bg-red-600 px-5 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50">
-                  {sending === `/api/quizzes/${quiz.id}/end` ? 'Ending...' : 'End'}
-                </button>
-              )}
-              {questionStatus === 'CLOSED' && q > 0 && (
-                <button onClick={() => callApi(`/api/quizzes/${quiz.id}/next`)} disabled={sending !== ''} className={`rounded-lg px-5 py-2 text-sm font-semibold disabled:opacity-50 ${isLastQuestion ? 'bg-purple-600 text-white hover:bg-purple-700' : 'border hover:bg-zinc-50'}`}>
-                  {sending === `/api/quizzes/${quiz.id}/next` ? 'Advancing...' : isLastQuestion ? 'Finish Quiz' : 'Next'}
-                </button>
-              )}
-            </div>
-          </div>
-
-          {buzzQueue.length > 0 && (
-            <div className="rounded-xl border p-6 shadow-sm">
-              <h2 className="mb-3 text-lg font-semibold">Buzz Ranking</h2>
-              <ol className="space-y-1">
-                {buzzQueue.map((b) => {
-                  const medal = b.rank === 1 ? '\uD83E\uDD47' : b.rank === 2 ? '\uD83E\uDD48' : b.rank === 3 ? '\uD83E\uDD49' : null
-                  return (
-                    <li key={b.participantId} className="flex items-center gap-3 rounded-md bg-zinc-50 px-4 py-2 text-sm">
-                      {medal ? <span className="text-lg">{medal}</span> : <span className="flex h-6 w-6 items-center justify-center rounded-full bg-zinc-300 text-xs font-bold text-zinc-700">{b.rank}</span>}
-                      <span>{b.participantName}</span>
-                    </li>
-                  )
-                })}
-              </ol>
-            </div>
-          )}
-
-          <div className="rounded-xl border p-6 shadow-sm">
-            <h2 className="mb-3 text-lg font-semibold">Participants <span className="text-sm font-normal text-zinc-400">({participants.length})</span></h2>
-            {participants.length === 0 ? <p className="text-sm text-zinc-400">No participants yet.</p> : (
-              <ul className="space-y-1">
-                {participants.map(p => (
-                  <li key={p.id} className="rounded-md bg-zinc-50 px-3 py-2 text-sm text-black">{p.name}</li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </>
+        <div className="rounded-xl border p-8 text-center space-y-4">
+          <p className="text-lg font-semibold text-green-700">Quiz is Live</p>
+          <p className="text-sm text-zinc-500">Question {q} of {quiz.totalQuestions} · {participants.length} participant{participants.length !== 1 ? 's' : ''}</p>
+          <Link href={`/quiz/${publicId}/live`} className="inline-block rounded-lg bg-green-600 px-6 py-3 text-base font-semibold text-white hover:bg-green-700">
+            Open Live Control Panel
+          </Link>
+        </div>
       )}
 
       {quiz.status === 'ARCHIVED' && (
