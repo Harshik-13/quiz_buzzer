@@ -331,7 +331,7 @@ const BUZZ_LUA_SCRIPT = `
 local key = KEYS[1]
 local pid = ARGV[1]
 
-local raw = redis.call("JSON.GET", key)
+local raw = redis.call("GET", key)
 if not raw then
   return '{"error":"No game state"}'
 end
@@ -371,7 +371,7 @@ local rank = #state.buzzQueue + 1
 local buzz = {participantId=pid, participantName=pname, serverTimestamp=ts, rank=rank}
 table.insert(state.buzzQueue, buzz)
 
-redis.call("JSON.SET", key, ".", cjson.encode(state))
+redis.call("SET", key, cjson.encode(state))
 
 return cjson.encode(buzz)
 `
