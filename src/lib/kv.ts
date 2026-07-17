@@ -27,6 +27,7 @@ const DEFAULT_STATE: GameState = {
 }
 
 let memoryState: GameState = structuredClone(DEFAULT_STATE)
+let memoryQuizStates: Map<string, GameState> = new Map()
 let memoryQuizzes: Quiz[] = []
 let memoryPublicIds: Map<string, string> = new Map()
 
@@ -83,7 +84,8 @@ export async function getQuizState(quizId: string): Promise<GameState | null> {
       if (process.env.NODE_ENV === 'production') throw new Error('Vercel KV is unavailable.')
     }
   }
-  return memoryState // fallback to global for backward compat
+  const quizState = memoryQuizStates.get(quizId)
+  return quizState ? structuredClone(quizState) : structuredClone(memoryState)
 }
 
 export async function setQuizState(quizId: string, state: GameState): Promise<void> {
@@ -95,6 +97,7 @@ export async function setQuizState(quizId: string, state: GameState): Promise<vo
       if (process.env.NODE_ENV === 'production') throw new Error('Vercel KV is unavailable.')
     }
   }
+  memoryQuizStates.set(quizId, structuredClone(state))
   await setState(state)
 }
 
