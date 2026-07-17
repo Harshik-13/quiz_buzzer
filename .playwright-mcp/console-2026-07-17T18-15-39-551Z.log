@@ -1,0 +1,2 @@
+[  191301ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_RESET @ http://localhost:3000/__nextjs_font/geist-latin.woff2:0
+[  191304ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_RESET @ http://localhost:3000/_next/static/chunks/src_app_organizer_page_tsx_004tgyl._.js:0

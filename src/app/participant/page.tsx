@@ -167,6 +167,7 @@ export default function ParticipantPage() {
   }
 
   const q = state?.currentQuestion ?? 0
+  const totalQuestions = state?.totalQuestions
   const status = state?.status ?? 'CLOSED'
   const myBuzz = state?.buzzQueue?.find((b) => b.participantId === participant.id)
   const hasBuzzed = !!myBuzz
@@ -198,7 +199,7 @@ export default function ParticipantPage() {
       <div className="w-full max-w-sm space-y-6 rounded-xl border p-8 text-center shadow-sm">
         <p className="text-sm text-zinc-500">Joined as <span className="font-semibold text-zinc-800">{participant.name}</span></p>
         {q > 0 ? (
-          <p className="text-lg font-semibold">Question {q}</p>
+          <p className="text-lg font-semibold">Question {q}{totalQuestions ? ` of ${totalQuestions}` : ''}</p>
         ) : (
           <p className="text-lg font-semibold text-zinc-400">No question yet</p>
         )}
