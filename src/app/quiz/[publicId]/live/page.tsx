@@ -239,9 +239,9 @@ export default function LiveQuizPage() {
 
       <div className="grid grid-cols-2 gap-6">
         <div className="rounded-xl border p-5 shadow-sm">
-          <h2 className="mb-3 text-base font-semibold">Buzz Rankings</h2>
+          <h2 className="mb-3 text-base font-semibold text-black">Buzz Rankings</h2>
           {buzzQueue.length === 0 ? (
-            <p className="text-sm text-zinc-400">No buzzes yet.</p>
+            <p className="text-sm text-black">No buzzes yet.</p>
           ) : (
             <ol className="space-y-1.5">
               {buzzQueue.map((b) => {
@@ -251,9 +251,9 @@ export default function LiveQuizPage() {
                     {medal ? (
                       <span className="text-xl">{medal}</span>
                     ) : (
-                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-zinc-300 text-xs font-bold text-zinc-700">{b.rank}</span>
+                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-zinc-300 text-xs font-bold text-black">{b.rank}</span>
                     )}
-                    <span className="font-medium">{b.participantName}</span>
+                    <span className="font-medium text-black">{b.participantName}</span>
                   </li>
                 )
               })}
@@ -262,15 +262,15 @@ export default function LiveQuizPage() {
         </div>
 
         <div className="rounded-xl border p-5 shadow-sm">
-          <h2 className="mb-3 text-base font-semibold">Participants <span className="text-sm font-normal text-zinc-400">({participants.length})</span></h2>
+          <h2 className="mb-3 text-base font-semibold text-black">Participants <span className="text-sm font-normal text-black">({participants.length})</span></h2>
           {participants.length === 0 ? (
-            <p className="text-sm text-zinc-400">No participants yet.</p>
+            <p className="text-sm text-black">No participants yet.</p>
           ) : (
             <ul className="space-y-1">
               {participants.map(p => (
                 <li key={p.id} className="flex items-center gap-2 rounded-md bg-zinc-50 px-3 py-2 text-sm">
                   <span className="h-2 w-2 rounded-full bg-green-500 shrink-0" />
-                  <span>{p.name}</span>
+                  <span className="text-black">{p.name}</span>
                 </li>
               ))}
             </ul>

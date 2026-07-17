@@ -20,7 +20,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ pub
       return Response.json(result, { status: 400 })
     }
     return Response.json(result)
-  } catch {
-    return Response.json({ error: 'Buzz failed' }, { status: 500 })
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Unknown error'
+    return Response.json({ error: `Buzz failed: ${message}` }, { status: 500 })
   }
 }

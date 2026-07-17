@@ -85,7 +85,7 @@ export async function getQuizState(quizId: string): Promise<GameState | null> {
     }
   }
   const quizState = memoryQuizStates.get(quizId)
-  return quizState ? structuredClone(quizState) : structuredClone(memoryState)
+  return quizState ? structuredClone(quizState) : null
 }
 
 export async function setQuizState(quizId: string, state: GameState): Promise<void> {
