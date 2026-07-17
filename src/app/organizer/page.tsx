@@ -17,7 +17,6 @@ function loadStoredSecret(): string {
 export default function OrganizerPage() {
   const router = useRouter()
   const [secret, setSecret] = useState(loadStoredSecret)
-  const [authenticated, setAuthenticated] = useState(false)
   const [verifying, setVerifying] = useState(!!loadStoredSecret())
   const [error, setError] = useState('')
   const [sending, setSending] = useState('')
@@ -41,7 +40,7 @@ export default function OrganizerPage() {
         if (!cancelled) {
           if (res.status !== 401) {
             secretRef.current = stored
-            setAuthenticated(true)
+            router.replace('/dashboard')
           } else {
             sessionStorage.removeItem(SECRET_KEY)
             setSecret('')
@@ -58,11 +57,7 @@ export default function OrganizerPage() {
     }
     verify()
     return () => { cancelled = true }
-  }, [])
-
-  useEffect(() => {
-    if (authenticated) router.push('/my-quizzes')
-  }, [authenticated, router])
+  }, [router])
 
   const handleAuth = async () => {
     const trimmed = secret.trim()
@@ -87,8 +82,8 @@ export default function OrganizerPage() {
       }
 
       secretRef.current = trimmed
-      setAuthenticated(true)
       sessionStorage.setItem(SECRET_KEY, trimmed)
+      router.replace('/dashboard')
     } catch {
       setError('Network error. Try again.')
     } finally {
@@ -104,40 +99,36 @@ export default function OrganizerPage() {
     )
   }
 
-  if (!authenticated) {
-    return (
-      <div className="flex flex-1 items-center justify-center p-8">
-        <div className="w-full max-w-sm space-y-6 rounded-xl border p-8 shadow-sm">
-          <h1 className="text-center text-2xl font-bold">Organizer</h1>
-          {error && (
-            <p className="rounded bg-red-50 p-3 text-sm text-red-700">{error}</p>
-          )}
-          <div className="space-y-2">
-            <label htmlFor="secret" className="text-sm font-medium">
-              Admin Secret
-            </label>
-            <input
-              id="secret"
-              type="password"
-              value={secret}
-              onChange={(e) => setSecret(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleAuth()}
-              placeholder="Enter admin secret"
-              className="w-full rounded-lg border px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              autoFocus
-            />
-          </div>
-          <button
-            onClick={handleAuth}
-            disabled={sending === 'auth'}
-            className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
-          >
-            {sending === 'auth' ? 'Verifying...' : 'Authenticate'}
-          </button>
+  return (
+    <div className="flex flex-1 items-center justify-center p-8">
+      <div className="w-full max-w-sm space-y-6 rounded-xl border p-8 shadow-sm">
+        <h1 className="text-center text-2xl font-bold">Organizer</h1>
+        {error && (
+          <p className="rounded bg-red-50 p-3 text-sm text-red-700">{error}</p>
+        )}
+        <div className="space-y-2">
+          <label htmlFor="secret" className="text-sm font-medium">
+            Admin Secret
+          </label>
+          <input
+            id="secret"
+            type="password"
+            value={secret}
+            onChange={(e) => setSecret(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleAuth()}
+            placeholder="Enter admin secret"
+            className="w-full rounded-lg border px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            autoFocus
+          />
         </div>
+        <button
+          onClick={handleAuth}
+          disabled={sending === 'auth'}
+          className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+        >
+          {sending === 'auth' ? 'Verifying...' : 'Authenticate'}
+        </button>
       </div>
-    )
-  }
-
-  return null
+    </div>
+  )
 }

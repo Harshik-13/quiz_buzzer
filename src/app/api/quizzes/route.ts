@@ -1,18 +1,24 @@
-import { isAdmin } from '@/lib/admin'
-import { listQuizzes, createQuiz } from '@/lib/kv'
+import { requireAdmin } from '@/lib/admin'
+import { listQuizzesByOrganizer, createQuiz } from '@/lib/kv'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: Request) {
-  if (!isAdmin(request)) {
+  let organizerId: string
+  try {
+    organizerId = requireAdmin(request)
+  } catch {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  const quizzes = await listQuizzes()
+  const quizzes = await listQuizzesByOrganizer(organizerId)
   return Response.json(quizzes)
 }
 
 export async function POST(request: Request) {
-  if (!isAdmin(request)) {
+  let organizerId: string
+  try {
+    organizerId = requireAdmin(request)
+  } catch {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }
 

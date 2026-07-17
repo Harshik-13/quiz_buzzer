@@ -1,14 +1,20 @@
-import { isAdmin } from '@/lib/admin'
-import { duplicateQuiz } from '@/lib/kv'
+import { requireAdmin } from '@/lib/admin'
+import { getQuiz, duplicateQuiz } from '@/lib/kv'
 
 export const dynamic = 'force-dynamic'
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!isAdmin(request)) {
+  let organizerId: string
+  try {
+    organizerId = requireAdmin(request)
+  } catch {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }
   const { id } = await params
-  const quiz = await duplicateQuiz(id)
+  const quiz = await getQuiz(id)
   if (!quiz) return Response.json({ error: 'Quiz not found' }, { status: 404 })
-  return Response.json(quiz, { status: 201 })
+  if (quiz.organizerId !== organizerId) return Response.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const copy = await duplicateQuiz(id)
+  return Response.json(copy, { status: 201 })
 }

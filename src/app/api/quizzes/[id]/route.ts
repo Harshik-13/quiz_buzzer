@@ -1,23 +1,34 @@
-import { isAdmin } from '@/lib/admin'
+import { requireAdmin } from '@/lib/admin'
 import { getQuiz, updateQuiz, deleteQuiz } from '@/lib/kv'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!isAdmin(request)) {
+  let organizerId: string
+  try {
+    organizerId = requireAdmin(request)
+  } catch {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }
   const { id } = await params
   const quiz = await getQuiz(id)
   if (!quiz) return Response.json({ error: 'Quiz not found' }, { status: 404 })
+  if (quiz.organizerId !== organizerId) return Response.json({ error: 'Unauthorized' }, { status: 401 })
   return Response.json(quiz)
 }
 
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!isAdmin(request)) {
+  let organizerId: string
+  try {
+    organizerId = requireAdmin(request)
+  } catch {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }
   const { id } = await params
+  const quiz = await getQuiz(id)
+  if (!quiz) return Response.json({ error: 'Quiz not found' }, { status: 404 })
+  if (quiz.organizerId !== organizerId) return Response.json({ error: 'Unauthorized' }, { status: 401 })
+
   const body = await request.json()
   const updates: Record<string, unknown> = {}
 
@@ -36,17 +47,26 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     }
     updates.totalQuestions = tq
   }
+  if (body.status !== undefined) {
+    updates.status = body.status
+  }
 
-  const quiz = await updateQuiz(id, updates)
-  if (!quiz) return Response.json({ error: 'Quiz not found' }, { status: 404 })
-  return Response.json(quiz)
+  const updated = await updateQuiz(id, updates)
+  return Response.json(updated)
 }
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!isAdmin(request)) {
+  let organizerId: string
+  try {
+    organizerId = requireAdmin(request)
+  } catch {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }
   const { id } = await params
+  const quiz = await getQuiz(id)
+  if (!quiz) return Response.json({ error: 'Quiz not found' }, { status: 404 })
+  if (quiz.organizerId !== organizerId) return Response.json({ error: 'Unauthorized' }, { status: 401 })
+
   await deleteQuiz(id)
   return Response.json({ ok: true })
 }

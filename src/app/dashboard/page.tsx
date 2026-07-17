@@ -11,17 +11,23 @@ function loadStoredSecret(): string {
   try { return sessionStorage.getItem(SECRET_KEY) || '' } catch { return '' }
 }
 
-export default function MyQuizzesPage() {
+type Tab = 'live' | 'draft' | 'all'
+
+export default function DashboardPage() {
   const router = useRouter()
   const [quizzes, setQuizzes] = useState<Quiz[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [tab, setTab] = useState<Tab>('live')
   const [showCreate, setShowCreate] = useState(false)
   const [createName, setCreateName] = useState('')
   const [createQuestions, setCreateQuestions] = useState('')
   const [createDesc, setCreateDesc] = useState('')
   const [creating, setCreating] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
+  const [copiedId, setCopiedId] = useState<string | null>(null)
+  const [origin, setOrigin] = useState('')
+  const [authChecked, setAuthChecked] = useState(false)
   const secretRef = useRef(loadStoredSecret())
 
   const adminHeaders = useCallback(() => ({
@@ -29,16 +35,40 @@ export default function MyQuizzesPage() {
     'x-admin-secret': secretRef.current,
   }), [])
 
+  useEffect(() => {
+    setOrigin(window.location.origin)
+    const stored = loadStoredSecret()
+    if (!stored) {
+      router.replace('/organizer')
+      return
+    }
+    fetch('/api/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ secret: stored }),
+    }).then(res => {
+      if (res.status === 401) {
+        sessionStorage.removeItem(SECRET_KEY)
+        router.replace('/organizer')
+      }
+      setAuthChecked(true)
+    }).catch(() => {
+      setAuthChecked(true)
+    })
+  }, [router])
+
   const loadQuizzes = useCallback(async () => {
     try {
       const res = await fetch('/api/quizzes', { headers: adminHeaders() })
-      if (res.status === 401) { router.push('/organizer'); return }
+      if (res.status === 401) { router.replace('/organizer'); return }
       if (res.ok) setQuizzes(await res.json())
     } catch { setError('Failed to load quizzes') }
     finally { setLoading(false) }
   }, [adminHeaders, router])
 
-  useEffect(() => { loadQuizzes() }, [loadQuizzes])
+  useEffect(() => {
+    if (authChecked) loadQuizzes()
+  }, [authChecked, loadQuizzes])
 
   const handleCreate = async () => {
     const name = createName.trim()
@@ -87,10 +117,42 @@ export default function MyQuizzesPage() {
     } catch { setError('Network error') }
   }
 
+  const handlePublish = async (id: string) => {
+    try {
+      const res = await fetch(`/api/quizzes/${id}`, {
+        method: 'PUT',
+        headers: adminHeaders(),
+        body: JSON.stringify({ status: 'PUBLISHED' }),
+      })
+      if (res.ok) await loadQuizzes()
+      else { const d = await res.json(); setError(d.error || 'Failed to publish') }
+    } catch { setError('Network error') }
+  }
+
+  const handleLogout = () => {
+    sessionStorage.removeItem(SECRET_KEY)
+    router.replace('/organizer')
+  }
+
+  const copyShareLink = async (publicId: string) => {
+    const link = `${window.location.origin}/quiz/${publicId}`
+    try {
+      await navigator.clipboard.writeText(link)
+      setCopiedId(publicId)
+      setTimeout(() => setCopiedId(null), 2000)
+    } catch { setError('Failed to copy link') }
+  }
+
+  const filteredQuizzes = quizzes.filter(q => {
+    if (tab === 'live') return q.status === 'PUBLISHED' || q.status === 'RUNNING'
+    if (tab === 'draft') return q.status === 'DRAFT'
+    return true
+  })
+
   const statusBadge = (q: Quiz) => {
     const colors: Record<string, string> = {
       DRAFT: 'bg-zinc-100 text-zinc-600',
-      READY: 'bg-blue-100 text-blue-700',
+      PUBLISHED: 'bg-blue-100 text-blue-700',
       RUNNING: 'bg-green-100 text-green-700',
       FINISHED: 'bg-purple-100 text-purple-700',
       ARCHIVED: 'bg-amber-100 text-amber-700',
@@ -100,11 +162,18 @@ export default function MyQuizzesPage() {
 
   const formatDate = (ts: number) => new Date(ts).toLocaleDateString()
 
+  if (!authChecked) {
+    return <div className="flex flex-1 items-center justify-center p-8"><p className="text-sm text-zinc-400">Loading...</p></div>
+  }
+
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col space-y-6 p-8">
+    <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col space-y-6 p-8">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">My Quizzes</h1>
-        <button onClick={() => setShowCreate(true)} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">+ Create Quiz</button>
+        <h1 className="text-2xl font-bold">Organizer Dashboard</h1>
+        <div className="flex items-center gap-3">
+          <button onClick={() => setShowCreate(true)} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">+ Create Quiz</button>
+          <button onClick={handleLogout} className="rounded-lg border px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50">Logout</button>
+        </div>
       </div>
 
       {error && <p className="rounded bg-red-50 p-3 text-sm text-red-700">{error}</p>}
@@ -133,39 +202,79 @@ export default function MyQuizzesPage() {
         </div>
       )}
 
+      <div className="flex gap-1 border-b">
+        {(['live', 'draft', 'all'] as Tab[]).map(t => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              tab === t
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-zinc-500 hover:text-zinc-800'
+            }`}
+          >
+            {t === 'live' ? 'Live' : t === 'draft' ? 'Drafts' : 'My Quizzes'}
+          </button>
+        ))}
+      </div>
+
       {loading ? (
         <p className="text-sm text-zinc-400">Loading quizzes...</p>
-      ) : quizzes.length === 0 ? (
+      ) : filteredQuizzes.length === 0 ? (
         <div className="rounded-xl border p-12 text-center">
-          <p className="text-zinc-400">No quizzes yet. Create your first quiz!</p>
+          <p className="text-zinc-400">
+            {tab === 'live' ? 'No live quizzes.' : tab === 'draft' ? 'No draft quizzes.' : 'No quizzes yet.'}
+            {tab !== 'all' && ' Create a quiz and publish it!'}
+          </p>
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
-          {quizzes.map(q => (
+          {filteredQuizzes.map(q => (
             <div key={q.id} className="rounded-xl border p-5 shadow-sm space-y-3">
               <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <h3 className="font-semibold truncate">{q.name}</h3>
                   <p className="text-xs text-zinc-400">{q.totalQuestions} questions</p>
                 </div>
                 {statusBadge(q)}
               </div>
               {q.description && <p className="text-sm text-zinc-500 line-clamp-2">{q.description}</p>}
+
+              {(q.status === 'PUBLISHED' || q.status === 'RUNNING') && (
+                <div className="flex items-center gap-2 rounded-md bg-zinc-50 p-2">
+                  <span className="text-xs text-zinc-500 truncate flex-1">{origin}/quiz/{q.publicId}</span>
+                  <button
+                    onClick={() => copyShareLink(q.publicId)}
+                    className="text-xs font-medium text-blue-600 hover:text-blue-700 shrink-0"
+                  >
+                    {copiedId === q.publicId ? 'Copied!' : 'Copy'}
+                  </button>
+                </div>
+              )}
+
               <div className="flex flex-wrap gap-1.5 text-xs text-zinc-400">
                 <span>Created {formatDate(q.createdAt)}</span>
                 {q.lastPlayedAt && <span>· Last played {formatDate(q.lastPlayedAt)}</span>}
                 <span>· {q.participants.length} participants</span>
               </div>
+
               <div className="flex flex-wrap gap-2 pt-1">
                 {q.status === 'RUNNING' ? (
-                  <button onClick={() => router.push(`/quiz/${q.id}`)} className="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-green-700">Open</button>
+                  <button onClick={() => router.push(`/quiz/${q.publicId}/manage`)} className="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-green-700">Open Control Panel</button>
+                ) : q.status === 'PUBLISHED' ? (
+                  <>
+                    <button onClick={() => router.push(`/quiz/${q.publicId}/manage`)} className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700">Open</button>
+                  </>
                 ) : q.status === 'FINISHED' || q.status === 'ARCHIVED' ? (
-                  <button onClick={() => router.push(`/quiz/${q.id}`)} className="rounded-lg border px-3 py-1.5 text-xs font-semibold hover:bg-zinc-50">View</button>
+                  <button onClick={() => router.push(`/quiz/${q.publicId}/manage`)} className="rounded-lg border px-3 py-1.5 text-xs font-semibold hover:bg-zinc-50">View</button>
                 ) : (
-                  <button onClick={() => router.push(`/quiz/${q.id}`)} className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700">Open</button>
+                  <button onClick={() => router.push(`/quiz/${q.publicId}/manage`)} className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700">Edit</button>
                 )}
-                {(q.status === 'DRAFT' || q.status === 'READY') && (
-                  <button onClick={() => router.push(`/quiz/${q.id}`)} className="rounded-lg border px-3 py-1.5 text-xs font-semibold hover:bg-zinc-50">Edit</button>
+                {q.status === 'PUBLISHED' && (
+                  <button onClick={() => router.push(`/quiz/${q.publicId}/manage`)} className="rounded-lg border px-3 py-1.5 text-xs font-semibold hover:bg-zinc-50">Edit</button>
+                )}
+                {q.status === 'DRAFT' && (
+                  <button onClick={() => handlePublish(q.id)} className="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-green-700">Make Live</button>
                 )}
                 {q.status !== 'RUNNING' && (
                   <button onClick={() => handleDuplicate(q.id)} className="rounded-lg border px-3 py-1.5 text-xs font-semibold hover:bg-zinc-50">Duplicate</button>
@@ -184,9 +293,9 @@ export default function MyQuizzesPage() {
                     <button onClick={() => handleDelete(q.id)} className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700">Confirm</button>
                     <button onClick={() => setDeleteConfirm(null)} className="rounded-lg border px-3 py-1.5 text-xs font-semibold hover:bg-zinc-50">Cancel</button>
                   </div>
-                ) : (
+                ) : q.status !== 'RUNNING' ? (
                   <button onClick={() => setDeleteConfirm(q.id)} className="rounded-lg border border-red-300 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50">Delete</button>
-                )}
+                ) : null}
               </div>
             </div>
           ))}

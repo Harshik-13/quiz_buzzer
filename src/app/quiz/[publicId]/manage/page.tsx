@@ -13,14 +13,16 @@ function loadStoredSecret(): string {
   try { return sessionStorage.getItem(SECRET_KEY) || '' } catch { return '' }
 }
 
-export default function QuizDashboard() {
-  const { id } = useParams<{ id: string }>()
+export default function QuizManagePage() {
+  const { publicId } = useParams<{ publicId: string }>()
   const router = useRouter()
   const [quiz, setQuiz] = useState<Quiz | null>(null)
   const [state, setState] = useState<{ currentQuestion: number; status: string; participants: { id: string; name: string }[]; buzzQueue: { participantId: string; participantName: string; rank: number }[] } | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [sending, setSending] = useState('')
+  const [shareLink, setShareLink] = useState('')
+  const [copied, setCopied] = useState(false)
   const secretRef = useRef(loadStoredSecret())
 
   const adminHeaders = useCallback(() => ({
@@ -29,31 +31,43 @@ export default function QuizDashboard() {
   }), [])
 
   useEffect(() => {
+    const stored = loadStoredSecret()
+    if (!stored) { router.replace('/organizer'); return }
+    setShareLink(`${window.location.origin}/quiz/${publicId}`)
+  }, [publicId, router])
+
+  useEffect(() => {
     const load = async () => {
       try {
-        const res = await fetch(`/api/quizzes/${id}`, { headers: adminHeaders() })
-        if (res.status === 401) { router.push('/organizer'); return }
+        const listRes = await fetch('/api/quizzes', { headers: adminHeaders() })
+        if (listRes.status === 401) { router.replace('/organizer'); return }
+        const quizzes: Quiz[] = await listRes.json()
+        const found = quizzes.find(q => q.publicId === publicId)
+        if (!found) { setError('Quiz not found'); return }
+        setQuiz(found)
+
+        const res = await fetch(`/api/quizzes/${found.id}`, { headers: adminHeaders() })
         if (!res.ok) { setError('Quiz not found'); return }
         setQuiz(await res.json())
       } catch { setError('Failed to load quiz') }
       finally { setLoading(false) }
     }
     load()
-  }, [id, adminHeaders, router])
+  }, [publicId, adminHeaders, router])
 
   useEffect(() => {
     if (!quiz || quiz.status !== 'RUNNING') return
     let cancelled = false
     const tick = async () => {
       try {
-        const res = await fetch('/api/state')
+        const res = await fetch(`/api/quiz/${publicId}/state`)
         if (!cancelled && res.ok) setState(await res.json())
       } catch { /* ignore */ }
     }
     tick()
     const interval = setInterval(tick, POLL_INTERVAL)
     return () => { cancelled = true; clearInterval(interval) }
-  }, [quiz?.status, quiz?.id])
+  }, [quiz?.status, quiz?.id, publicId])
 
   const callApi = useCallback(async (path: string) => {
     setError('')
@@ -64,14 +78,26 @@ export default function QuizDashboard() {
       else {
         const data = await res.json()
         if (data.status === 'FINISHED') {
-          const q = await (await fetch(`/api/quizzes/${id}`, { headers: adminHeaders() })).json()
-          setQuiz(q)
+          const listRes = await fetch('/api/quizzes', { headers: adminHeaders() })
+          if (listRes.ok) {
+            const quizzes: Quiz[] = await listRes.json()
+            const found = quizzes.find(q => q.publicId === publicId)
+            if (found) setQuiz(found)
+          }
           setState(null)
         }
       }
     } catch { setError('Network error') }
     finally { setSending('') }
-  }, [id, adminHeaders])
+  }, [publicId, adminHeaders])
+
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(shareLink)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch { setError('Failed to copy') }
+  }
 
   if (loading) return <div className="flex flex-1 items-center justify-center p-8"><p className="text-sm text-zinc-400">Loading...</p></div>
   if (!quiz) return <div className="flex flex-1 items-center justify-center p-8"><p className="text-sm text-red-600">{error || 'Quiz not found'}</p></div>
@@ -85,10 +111,21 @@ export default function QuizDashboard() {
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col space-y-4 p-8">
       <div className="flex items-center gap-3 text-sm text-zinc-500">
-        <Link href="/my-quizzes" className="hover:text-zinc-800">&larr; My Quizzes</Link>
+        <Link href="/dashboard" className="hover:text-zinc-800">&larr; Dashboard</Link>
       </div>
 
-      <h1 className="text-2xl font-bold">{quiz.name}</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">{quiz.name}</h1>
+      </div>
+
+      {(quiz.status === 'PUBLISHED' || quiz.status === 'RUNNING') && (
+        <div className="flex items-center gap-2 rounded-lg border bg-zinc-50 px-4 py-2">
+          <span className="text-sm text-zinc-500 truncate flex-1">{shareLink}</span>
+          <button onClick={copyLink} className="text-sm font-medium text-blue-600 hover:text-blue-700 shrink-0">
+            {copied ? 'Copied!' : 'Copy Link'}
+          </button>
+        </div>
+      )}
 
       {error && <p className="rounded bg-red-50 p-3 text-sm text-red-700">{error}</p>}
 
@@ -106,9 +143,25 @@ export default function QuizDashboard() {
       )}
 
       {quiz.status === 'DRAFT' && (
-        <div className="rounded-xl border p-6 text-center">
-          <p className="text-zinc-500">Ready to start when you are.</p>
-          <button onClick={() => callApi(`/api/quizzes/${id}/start`)} disabled={sending !== ''} className="mt-4 rounded-lg bg-green-600 px-6 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50">{sending === `/api/quizzes/${id}/start` ? 'Starting...' : 'Start Quiz'}</button>
+        <div className="rounded-xl border p-6 text-center space-y-4">
+          <p className="text-zinc-500">This quiz is in draft mode.</p>
+          <div className="flex justify-center gap-3">
+            <button onClick={() => callApi(`/api/quizzes/${quiz.id}/start`)} disabled={sending !== ''} className="rounded-lg bg-green-600 px-5 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50">
+              {sending === `/api/quizzes/${quiz.id}/start` ? 'Starting...' : 'Start Quiz'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {quiz.status === 'PUBLISHED' && (
+        <div className="rounded-xl border p-6 text-center space-y-4">
+          <p className="text-zinc-500">Quiz is published. Share the link with participants.</p>
+          <p className="text-sm text-zinc-400">{participants.length} participant{participants.length !== 1 ? 's' : ''} joined</p>
+          <div className="flex justify-center gap-3">
+            <button onClick={() => callApi(`/api/quizzes/${quiz.id}/start`)} disabled={sending !== ''} className="rounded-lg bg-green-600 px-5 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50">
+              {sending === `/api/quizzes/${quiz.id}/start` ? 'Starting...' : 'Start Quiz'}
+            </button>
+          </div>
         </div>
       )}
 
@@ -130,18 +183,18 @@ export default function QuizDashboard() {
 
             <div className="flex flex-wrap gap-3">
               {questionStatus === 'CLOSED' && (
-                <button onClick={() => callApi(`/api/quizzes/${id}/start`)} disabled={sending !== ''} className="rounded-lg bg-green-600 px-5 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50">
-                  {sending === `/api/quizzes/${id}/start` ? 'Opening...' : 'Start'}
+                <button onClick={() => callApi(`/api/quizzes/${quiz.id}/start`)} disabled={sending !== ''} className="rounded-lg bg-green-600 px-5 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50">
+                  {sending === `/api/quizzes/${quiz.id}/start` ? 'Opening...' : 'Start'}
                 </button>
               )}
               {questionStatus === 'OPEN' && (
-                <button onClick={() => callApi(`/api/quizzes/${id}/end`)} disabled={sending !== ''} className="rounded-lg bg-red-600 px-5 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50">
-                  {sending === `/api/quizzes/${id}/end` ? 'Ending...' : 'End'}
+                <button onClick={() => callApi(`/api/quizzes/${quiz.id}/end`)} disabled={sending !== ''} className="rounded-lg bg-red-600 px-5 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50">
+                  {sending === `/api/quizzes/${quiz.id}/end` ? 'Ending...' : 'End'}
                 </button>
               )}
               {questionStatus === 'CLOSED' && q > 0 && (
-                <button onClick={() => callApi(`/api/quizzes/${id}/next`)} disabled={sending !== ''} className={`rounded-lg px-5 py-2 text-sm font-semibold disabled:opacity-50 ${isLastQuestion ? 'bg-purple-600 text-white hover:bg-purple-700' : 'border hover:bg-zinc-50'}`}>
-                  {sending === `/api/quizzes/${id}/next` ? 'Advancing...' : isLastQuestion ? 'Finish Quiz' : 'Next'}
+                <button onClick={() => callApi(`/api/quizzes/${quiz.id}/next`)} disabled={sending !== ''} className={`rounded-lg px-5 py-2 text-sm font-semibold disabled:opacity-50 ${isLastQuestion ? 'bg-purple-600 text-white hover:bg-purple-700' : 'border hover:bg-zinc-50'}`}>
+                  {sending === `/api/quizzes/${quiz.id}/next` ? 'Advancing...' : isLastQuestion ? 'Finish Quiz' : 'Next'}
                 </button>
               )}
             </div>
@@ -168,7 +221,7 @@ export default function QuizDashboard() {
             <h2 className="mb-3 text-lg font-semibold">Participants <span className="text-sm font-normal text-zinc-400">({participants.length})</span></h2>
             {participants.length === 0 ? <p className="text-sm text-zinc-400">No participants yet.</p> : (
               <ul className="space-y-1">
-                {participants.map((p) => (
+                {participants.map(p => (
                   <li key={p.id} className="rounded-md bg-zinc-50 px-3 py-2 text-sm text-black">{p.name}</li>
                 ))}
               </ul>

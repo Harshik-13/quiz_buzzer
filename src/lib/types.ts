@@ -20,7 +20,7 @@ export interface GameState {
   buzzQueue: Buzz[]
 }
 
-export type QuizStatus = 'DRAFT' | 'READY' | 'RUNNING' | 'FINISHED' | 'ARCHIVED'
+export type QuizStatus = 'DRAFT' | 'PUBLISHED' | 'RUNNING' | 'FINISHED' | 'ARCHIVED'
 
 export interface QuizStats {
   totalParticipants: number
@@ -30,8 +30,15 @@ export interface QuizStats {
   fastestBuzz: number
 }
 
+export interface Question {
+  id: string
+  text: string
+}
+
 export interface Quiz {
   id: string
+  publicId: string
+  organizerId: string
   name: string
   description: string
   totalQuestions: number
@@ -44,8 +51,4 @@ export interface Quiz {
   updatedAt: number
   lastPlayedAt?: number
   statistics?: QuizStats
-}
-
-export interface AppMeta {
-  activeQuizId: string | null
 }

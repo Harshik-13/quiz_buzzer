@@ -19,12 +19,6 @@ export default function Home() {
           >
             Organizer Dashboard
           </Link>
-          <Link
-            href="/my-quizzes"
-            className="block rounded-lg border px-4 py-3 text-sm font-semibold hover:bg-zinc-50"
-          >
-            My Quizzes
-          </Link>
         </div>
       </div>
     </div>
