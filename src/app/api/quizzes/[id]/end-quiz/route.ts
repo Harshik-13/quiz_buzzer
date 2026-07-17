@@ -1,5 +1,5 @@
 import { requireAdmin } from '@/lib/admin'
-import { getQuiz, updateQuiz, getQuizState, setQuizState } from '@/lib/kv'
+import { getQuiz, updateQuiz, atomicEndQuiz } from '@/lib/kv'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,29 +18,24 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return Response.json({ error: 'Quiz is not running' }, { status: 400 })
   }
 
-  const state = await getQuizState(id)
+  const result = await atomicEndQuiz(id)
 
   await updateQuiz(id, {
     status: 'FINISHED',
     questionStatus: 'CLOSED',
     currentQuestion: quiz.currentQuestion,
     statistics: {
-      totalParticipants: state?.participants.length || quiz.participants.length,
+      totalParticipants: result.totalParticipants ?? quiz.participants.length,
       totalQuestions: quiz.totalQuestions,
-      winner: state?.buzzQueue[0]?.participantName || quiz.buzzQueue[0]?.participantName || '',
+      winner: result.winner || quiz.buzzQueue[0]?.participantName || '',
       completionTime: Date.now() - (quiz.lastPlayedAt || Date.now()),
       fastestBuzz: 0,
     },
   })
 
-  if (state) {
-    state.status = 'CLOSED'
-    await setQuizState(id, state)
-  }
-
   return Response.json({
     status: 'FINISHED',
-    currentQuestion: state?.currentQuestion || quiz.currentQuestion,
+    currentQuestion: quiz.currentQuestion,
     totalQuestions: quiz.totalQuestions,
   })
 }

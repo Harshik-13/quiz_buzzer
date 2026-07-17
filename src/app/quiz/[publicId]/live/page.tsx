@@ -239,7 +239,7 @@ export default function LiveQuizPage() {
 
       <div className="grid grid-cols-2 gap-6">
         <div className="rounded-xl border p-5 shadow-sm">
-          <h2 className="mb-3 text-base font-semibold text-black">Buzz Rankings</h2>
+          <h2 className="mb-3 text-base font-semibold text-white">Buzz Rankings</h2>
           {buzzQueue.length === 0 ? (
             <p className="text-sm text-black">No buzzes yet.</p>
           ) : (
@@ -262,7 +262,7 @@ export default function LiveQuizPage() {
         </div>
 
         <div className="rounded-xl border p-5 shadow-sm">
-          <h2 className="mb-3 text-base font-semibold text-black">Participants <span className="text-sm font-normal text-black">({participants.length})</span></h2>
+          <h2 className="mb-3 text-base font-semibold text-white">Participants <span className="text-sm font-normal text-white">({participants.length})</span></h2>
           {participants.length === 0 ? (
             <p className="text-sm text-black">No participants yet.</p>
           ) : (

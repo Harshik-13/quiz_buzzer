@@ -1,4 +1,4 @@
-import { getQuizByPublicId, getQuizState, setQuizState, updateQuiz } from '@/lib/kv'
+import { getQuizByPublicId, getQuizState, atomicJoinQuiz, updateQuiz } from '@/lib/kv'
 import type { Participant } from '@/lib/types'
 import { v4 as uuid } from 'uuid'
 
@@ -38,21 +38,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ pub
     return Response.json({ error: 'Name is too long' }, { status: 400 })
   }
 
-  const state = await getQuizState(quiz.id) || {
-    currentQuestion: 0,
-    totalQuestions: quiz.totalQuestions,
-    status: 'CLOSED' as const,
-    participants: [],
-    buzzQueue: [],
+  const participant: Participant = { id: uuid(), name: trimmed }
+  const result = await atomicJoinQuiz(quiz.id, participant, quiz.status)
+  if ('error' in result) {
+    return Response.json(result, { status: 400 })
   }
 
-  const participant: Participant = {
-    id: uuid(),
-    name: trimmed,
-  }
-  state.participants.push(participant)
-  await setQuizState(quiz.id, state)
-  await updateQuiz(quiz.id, { participants: state.participants })
+  await updateQuiz(quiz.id, { participants: (await getQuizState(quiz.id))?.participants ?? [result] })
 
-  return Response.json({ id: participant.id, name: participant.name })
+  return Response.json({ id: result.id, name: result.name })
 }

@@ -63,6 +63,16 @@ export default function QuizParticipantPage() {
   }, [participant, publicId])
 
   useEffect(() => {
+    const saved = localStorage.getItem(storageKey)
+    if (saved) {
+      try {
+        const p = JSON.parse(saved) as Participant
+        if (p.id && p.name) setParticipant(p)
+      } catch { /* ignore */ }
+    }
+  }, [storageKey])
+
+  useEffect(() => {
     if (!participant || initDone) return
     let cancelled = false
     const verify = async () => {

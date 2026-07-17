@@ -1,5 +1,5 @@
 import { createClient } from '@vercel/kv'
-import type { Buzz, GameState, Quiz } from './types'
+import type { Buzz, GameState, Participant, Quiz } from './types'
 import { v4 as uuid } from 'uuid'
 import { getOrganizerId } from './admin'
 
@@ -14,6 +14,43 @@ function getKv() {
 
 const kv = getKv()
 
+function requireKv(): void {
+  if (process.env.NODE_ENV === 'production' && !kv) {
+    throw new Error('Vercel KV is not configured. Set KV_REST_API_URL and KV_REST_API_TOKEN.')
+  }
+}
+
+// ── Per-Quiz Mutex (memory-mode serialization) ──
+
+class Mutex {
+  private queue: (() => void)[] = []
+  private locked = false
+  acquire(): Promise<void> {
+    if (!this.locked) { this.locked = true; return Promise.resolve() }
+    return new Promise(resolve => this.queue.push(resolve))
+  }
+  release(): void {
+    if (this.queue.length > 0) this.queue.shift()!()
+    else this.locked = false
+  }
+  async exec<T>(fn: () => Promise<T>): Promise<T> {
+    await this.acquire()
+    try { return await fn() }
+    finally { this.release() }
+  }
+}
+
+const quizMutexes = new Map<string, Mutex>()
+function getMutex(quizId: string): Mutex {
+  let m = quizMutexes.get(quizId)
+  if (!m) { m = new Mutex(); quizMutexes.set(quizId, m) }
+  return m
+}
+
+function clone<T>(v: T): T {
+  try { return structuredClone(v) } catch { return JSON.parse(JSON.stringify(v)) }
+}
+
 const STATE_KEY = 'game:state'
 const INDEX_KEY = 'quiz:index'
 const PUBLIC_ID_PREFIX = 'publicId:'
@@ -26,7 +63,7 @@ const DEFAULT_STATE: GameState = {
   buzzQueue: [],
 }
 
-let memoryState: GameState = structuredClone(DEFAULT_STATE)
+let memoryState: GameState = clone(DEFAULT_STATE)
 let memoryQuizStates: Map<string, GameState> = new Map()
 let memoryQuizzes: Quiz[] = []
 let memoryPublicIds: Map<string, string> = new Map()
@@ -55,7 +92,7 @@ export async function getState(): Promise<GameState> {
   } else if (process.env.NODE_ENV === 'production') {
     throw new Error('Vercel KV is not configured.')
   }
-  return structuredClone(memoryState)
+  return clone(memoryState)
 }
 
 export async function setState(state: GameState): Promise<void> {
@@ -64,17 +101,18 @@ export async function setState(state: GameState): Promise<void> {
       await kv.set(STATE_KEY, state)
     } catch {
       if (process.env.NODE_ENV === 'production') throw new Error('Vercel KV is unavailable.')
-      memoryState = structuredClone(state)
+      memoryState = clone(state)
     }
   } else {
     if (process.env.NODE_ENV === 'production') throw new Error('Vercel KV is not configured.')
-    memoryState = structuredClone(state)
+    memoryState = clone(state)
   }
 }
 
 // ── Per-Quiz Game State ──
 
 export async function getQuizState(quizId: string): Promise<GameState | null> {
+  requireKv()
   const key = `quiz:${quizId}:state`
   if (kv) {
     try {
@@ -85,7 +123,7 @@ export async function getQuizState(quizId: string): Promise<GameState | null> {
     }
   }
   const quizState = memoryQuizStates.get(quizId)
-  return quizState ? structuredClone(quizState) : null
+  return quizState ? clone(quizState) : null
 }
 
 export async function setQuizState(quizId: string, state: GameState): Promise<void> {
@@ -97,8 +135,7 @@ export async function setQuizState(quizId: string, state: GameState): Promise<vo
       if (process.env.NODE_ENV === 'production') throw new Error('Vercel KV is unavailable.')
     }
   }
-  memoryQuizStates.set(quizId, structuredClone(state))
-  await setState(state)
+  memoryQuizStates.set(quizId, clone(state))
 }
 
 // ── Public ID Resolution ──
@@ -310,6 +347,15 @@ export async function activateQuiz(id: string): Promise<Quiz | null> {
   const quiz = await getQuiz(id)
   if (!quiz) return null
 
+  const existing = await getQuizState(id)
+  if (existing) {
+    existing.currentQuestion = quiz.currentQuestion
+    existing.totalQuestions = quiz.totalQuestions
+    existing.status = quiz.questionStatus
+    await setQuizState(id, existing)
+    return quiz
+  }
+
   const gameState: GameState = {
     currentQuestion: quiz.currentQuestion,
     totalQuestions: quiz.totalQuestions,
@@ -325,87 +371,225 @@ export async function syncQuizFromState(): Promise<void> {
   // no-op; quiz state is managed per-quiz now
 }
 
-// ── Atomic Buzz (uses STATE_KEY directly, kept for backward compat) ──
+// ── Lua Scripts ──
 
-const BUZZ_LUA_SCRIPT = `
+const BUZZ_LUA = `
 local key = KEYS[1]
 local pid = ARGV[1]
-
 local raw = redis.call("GET", key)
-if not raw then
-  return '{"error":"No game state"}'
-end
-
+if not raw then return '{"error":"No game state"}' end
 local ok, state = pcall(cjson.decode, raw)
-if not ok then
-  return '{"error":"Failed to parse state"}'
-end
-
-if state.status ~= "OPEN" then
-  return '{"error":"Question is not open"}'
-end
-
+if not ok then return '{"error":"Failed to parse state"}' end
+if state.status ~= "OPEN" then return '{"error":"Question is not open"}' end
 local found = false
 local pname = ""
 for i, p in ipairs(state.participants) do
-  if p.id == pid then
-    found = true
-    pname = p.name
-    break
-  end
+  if p.id == pid then found = true; pname = p.name; break end
 end
-if not found then
-  return '{"error":"Unknown participant"}'
-end
-
+if not found then return '{"error":"Unknown participant"}' end
 for i, b in ipairs(state.buzzQueue) do
-  if b.participantId == pid then
-    return '{"error":"Already buzzed"}'
-  end
+  if b.participantId == pid then return '{"error":"Already buzzed"}' end
 end
-
 local t = redis.call("TIME")
-local ts = t[1] * 1000
-local rank = #state.buzzQueue + 1
-
-local buzz = {participantId=pid, participantName=pname, serverTimestamp=ts, rank=rank}
+local buzz = {participantId=pid, participantName=pname, serverTimestamp=t[1]*1000, rank=#state.buzzQueue+1}
 table.insert(state.buzzQueue, buzz)
-
 redis.call("SET", key, cjson.encode(state))
-
 return cjson.encode(buzz)
 `
 
-export async function atomicBuzz(participantId: string): Promise<Buzz | { error: string }> {
-  if (!kv) {
-    throw new Error('atomicBuzz requires Vercel KV to be configured')
-  }
-  const result = await kv.eval<string[], string>(BUZZ_LUA_SCRIPT, [STATE_KEY], [participantId])
-  return JSON.parse(result)
-}
+const JOIN_LUA = `
+local raw = redis.call("GET", KEYS[1])
+if not raw then return '{"error":"No quiz"}' end
+local state = cjson.decode(raw)
+if state.status ~= "PUBLISHED" and state.status ~= "RUNNING" then
+  return '{"error":"Quiz not accepting participants"}'
+end
+local pid = ARGV[1]
+local pname = ARGV[2]
+for i, p in ipairs(state.participants) do
+  if p.id == pid then return cjson.encode({id=pid, name=pname}) end
+end
+local participant = {id=pid, name=pname}
+table.insert(state.participants, participant)
+redis.call("SET", KEYS[1], cjson.encode(state))
+return cjson.encode(participant)
+`
+
+const TOGGLE_QUESTION_LUA = `
+local raw = redis.call("GET", KEYS[1])
+if not raw then return '{"error":"No game state"}' end
+local state = cjson.decode(raw)
+if state.status == "OPEN" then return '{"error":"Question already open"}' end
+state.status = "OPEN"
+state.buzzQueue = {}
+redis.call("SET", KEYS[1], cjson.encode(state))
+return cjson.encode({status="OPEN", currentQuestion=state.currentQuestion})
+`
+
+const NEXT_QUESTION_LUA = `
+local raw = redis.call("GET", KEYS[1])
+if not raw then return '{"error":"No game state"}' end
+local state = cjson.decode(raw)
+if state.status == "OPEN" then return '{"error":"Close question first"}' end
+local total = tonumber(ARGV[1])
+local nextQ = state.currentQuestion + 1
+if nextQ > total then
+  state.status = "CLOSED"
+  redis.call("SET", KEYS[1], cjson.encode(state))
+  return cjson.encode({action="FINISH", currentQuestion=state.currentQuestion,
+    totalParticipants=#state.participants, winner=(state.buzzQueue[1] and state.buzzQueue[1].participantName or "")})
+end
+state.currentQuestion = nextQ
+state.status = "CLOSED"
+state.buzzQueue = {}
+redis.call("SET", KEYS[1], cjson.encode(state))
+return cjson.encode({action="NEXT", currentQuestion=nextQ, totalQuestions=total})
+`
+
+const PREVIOUS_QUESTION_LUA = `
+local raw = redis.call("GET", KEYS[1])
+if not raw then return '{"error":"No game state"}' end
+local state = cjson.decode(raw)
+local prevQ = state.currentQuestion - 1
+if prevQ < 1 then return '{"error":"Already at first question"}' end
+state.currentQuestion = prevQ
+state.status = "CLOSED"
+state.buzzQueue = {}
+redis.call("SET", KEYS[1], cjson.encode(state))
+return cjson.encode({currentQuestion=prevQ, status="CLOSED", totalQuestions=state.totalQuestions})
+`
+
+const END_QUIZ_LUA = `
+local raw = redis.call("GET", KEYS[1])
+if not raw then return '{"error":"No game state"}' end
+local state = cjson.decode(raw)
+local winner = ""
+if state.buzzQueue and #state.buzzQueue > 0 then winner = state.buzzQueue[1].participantName end
+state.status = "CLOSED"
+redis.call("SET", KEYS[1], cjson.encode(state))
+return cjson.encode({status="CLOSED", totalParticipants=#state.participants, winner=winner})
+`
+
+// ── Atomic Operations ──
 
 export async function atomicBuzzForQuiz(quizId: string, participantId: string): Promise<Buzz | { error: string }> {
-  const stateKey = `quiz:${quizId}:state`
+  const key = `quiz:${quizId}:state`
   if (kv) {
-    const result = await kv.eval<string[], string>(BUZZ_LUA_SCRIPT, [stateKey], [participantId])
+    const result = await kv.eval<string[], string>(BUZZ_LUA, [key], [participantId])
     return JSON.parse(result)
   }
+  return getMutex(quizId).exec(async () => {
+    const state = await getQuizState(quizId)
+    if (!state) return { error: 'No game state' }
+    if (state.status !== 'OPEN') return { error: 'Question is not open' }
+    const p = state.participants.find(p => p.id === participantId)
+    if (!p) return { error: 'Unknown participant' }
+    if (state.buzzQueue.find(b => b.participantId === participantId)) return { error: 'Already buzzed' }
+    const buzz: Buzz = {
+      participantId: p.id, participantName: p.name,
+      serverTimestamp: Date.now(), rank: state.buzzQueue.length + 1,
+    }
+    state.buzzQueue.push(buzz)
+    await setQuizState(quizId, state)
+    return buzz
+  })
+}
 
-  const state = await getQuizState(quizId)
-  if (!state) return { error: 'No game state' }
-  if (state.status !== 'OPEN') return { error: 'Question is not open' }
-
-  const participant = state.participants.find(p => p.id === participantId)
-  if (!participant) return { error: 'Unknown participant' }
-  if (state.buzzQueue.find(b => b.participantId === participantId)) return { error: 'Already buzzed' }
-
-  const buzz: Buzz = {
-    participantId: participant.id,
-    participantName: participant.name,
-    serverTimestamp: Date.now(),
-    rank: state.buzzQueue.length + 1,
+export async function atomicJoinQuiz(quizId: string, participant: Participant, quizStatus: string): Promise<Participant | { error: string }> {
+  if (kv) {
+    const result = await kv.eval<string[], string>(JOIN_LUA, [`quiz:${quizId}:state`], [participant.id, participant.name])
+    return JSON.parse(result)
   }
-  state.buzzQueue.push(buzz)
-  await setQuizState(quizId, state)
-  return buzz
+  return getMutex(quizId).exec(async () => {
+    let state = await getQuizState(quizId)
+    if (!state) {
+      state = clone(DEFAULT_STATE)
+    }
+    for (const p of state.participants) {
+      if (p.id === participant.id) return participant
+    }
+    state.participants.push(participant)
+    await setQuizState(quizId, state)
+    return participant
+  })
+}
+
+export async function atomicToggleQuestion(quizId: string): Promise<{ status?: string; currentQuestion?: number; error?: string }> {
+  if (kv) {
+    const result = await kv.eval<string[], string>(TOGGLE_QUESTION_LUA, [`quiz:${quizId}:state`], [])
+    return JSON.parse(result)
+  }
+  return getMutex(quizId).exec(async () => {
+    const state = await getQuizState(quizId)
+    if (!state) return { error: 'No game state' }
+    if (state.status === 'OPEN') return { error: 'Question already open' }
+    state.status = 'OPEN'
+    state.buzzQueue = []
+    await setQuizState(quizId, state)
+    return { status: 'OPEN', currentQuestion: state.currentQuestion }
+  })
+}
+
+export async function atomicNextQuestion(quizId: string, totalQuestions: number): Promise<{
+  action?: string; currentQuestion?: number; error?: string; totalParticipants?: number; winner?: string
+}> {
+  if (kv) {
+    const result = await kv.eval<string[], string>(NEXT_QUESTION_LUA, [`quiz:${quizId}:state`], [String(totalQuestions)])
+    return JSON.parse(result)
+  }
+  return getMutex(quizId).exec(async () => {
+    const state = await getQuizState(quizId)
+    if (!state) return { error: 'No game state' }
+    if (state.status === 'OPEN') return { error: 'Close question first' }
+    const nextQ = state.currentQuestion + 1
+    if (nextQ > totalQuestions) {
+      state.status = 'CLOSED'
+      await setQuizState(quizId, state)
+      return {
+        action: 'FINISH', currentQuestion: state.currentQuestion,
+        totalParticipants: state.participants.length,
+        winner: state.buzzQueue[0]?.participantName ?? '',
+      }
+    }
+    state.currentQuestion = nextQ
+    state.status = 'CLOSED'
+    state.buzzQueue = []
+    await setQuizState(quizId, state)
+    return { action: 'NEXT', currentQuestion: nextQ, totalQuestions }
+  })
+}
+
+export async function atomicPreviousQuestion(quizId: string): Promise<{ currentQuestion?: number; status?: string; error?: string }> {
+  if (kv) {
+    const result = await kv.eval<string[], string>(PREVIOUS_QUESTION_LUA, [`quiz:${quizId}:state`], [])
+    return JSON.parse(result)
+  }
+  return getMutex(quizId).exec(async () => {
+    const state = await getQuizState(quizId)
+    if (!state) return { error: 'No game state' }
+    const prevQ = state.currentQuestion - 1
+    if (prevQ < 1) return { error: 'Already at first question' }
+    state.currentQuestion = prevQ
+    state.status = 'CLOSED'
+    state.buzzQueue = []
+    await setQuizState(quizId, state)
+    return { currentQuestion: prevQ, status: 'CLOSED' }
+  })
+}
+
+export async function atomicEndQuiz(quizId: string): Promise<{ status?: string; error?: string; totalParticipants?: number; winner?: string }> {
+  if (kv) {
+    const result = await kv.eval<string[], string>(END_QUIZ_LUA, [`quiz:${quizId}:state`], [])
+    return JSON.parse(result)
+  }
+  return getMutex(quizId).exec(async () => {
+    const state = await getQuizState(quizId)
+    if (!state) return { error: 'No game state' }
+    state.status = 'CLOSED'
+    await setQuizState(quizId, state)
+    return {
+      totalParticipants: state.participants.length,
+      winner: state.buzzQueue[0]?.participantName ?? '',
+    }
+  })
 }

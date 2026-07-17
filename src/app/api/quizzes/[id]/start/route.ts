@@ -1,5 +1,5 @@
 import { requireAdmin } from '@/lib/admin'
-import { getQuiz, updateQuiz, activateQuiz, getQuizState, setQuizState } from '@/lib/kv'
+import { getQuiz, updateQuiz, activateQuiz, atomicToggleQuestion } from '@/lib/kv'
 
 export const dynamic = 'force-dynamic'
 
@@ -35,15 +35,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return Response.json({ status: 'RUNNING', currentQuestion: firstQuestion, totalQuestions: quiz.totalQuestions, questionStatus: 'OPEN' })
   }
 
-  const state = await getQuizState(id)
-  if (!state || state.status !== 'CLOSED') {
-    return Response.json({ error: 'Question is already open' }, { status: 400 })
+  const result = await atomicToggleQuestion(id)
+  if (result.error) {
+    return Response.json({ error: result.error }, { status: 400 })
   }
 
-  state.status = 'OPEN'
-  state.buzzQueue = []
-  await setQuizState(id, state)
   await updateQuiz(id, { questionStatus: 'OPEN', buzzQueue: [] })
 
-  return Response.json({ currentQuestion: state.currentQuestion, status: 'OPEN', totalQuestions: quiz.totalQuestions })
+  return Response.json({ currentQuestion: result.currentQuestion, status: 'OPEN', totalQuestions: quiz.totalQuestions })
 }

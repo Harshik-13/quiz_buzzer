@@ -1,5 +1,5 @@
 import { requireAdmin } from '@/lib/admin'
-import { getQuiz, updateQuiz, getQuizState, setQuizState } from '@/lib/kv'
+import { getQuiz, updateQuiz, atomicNextQuestion } from '@/lib/kv'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,44 +18,36 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return Response.json({ error: 'Quiz is not running' }, { status: 400 })
   }
 
-  const state = await getQuizState(id)
-  if (!state || state.status !== 'CLOSED') {
-    return Response.json({ error: 'End the current question first' }, { status: 400 })
+  const result = await atomicNextQuestion(id, quiz.totalQuestions)
+  if (result.error) {
+    return Response.json({ error: result.error }, { status: 400 })
   }
 
-  const nextQuestion = state.currentQuestion + 1
-
-  if (nextQuestion > quiz.totalQuestions) {
-    state.status = 'CLOSED'
-    await setQuizState(id, state)
+  if (result.action === 'FINISH') {
     await updateQuiz(id, {
       status: 'FINISHED',
       questionStatus: 'CLOSED',
-      currentQuestion: state.currentQuestion,
+      currentQuestion: result.currentQuestion,
       statistics: {
-        totalParticipants: state.participants.length,
+        totalParticipants: result.totalParticipants ?? 0,
         totalQuestions: quiz.totalQuestions,
-        winner: state.buzzQueue[0]?.participantName || '',
+        winner: result.winner ?? '',
         completionTime: Date.now() - (quiz.lastPlayedAt || Date.now()),
         fastestBuzz: 0,
       },
     })
-    return Response.json({ status: 'FINISHED', currentQuestion: state.currentQuestion, totalQuestions: quiz.totalQuestions })
+    return Response.json({ status: 'FINISHED', currentQuestion: result.currentQuestion, totalQuestions: quiz.totalQuestions })
   }
 
-  state.currentQuestion = nextQuestion
-  state.status = 'CLOSED'
-  state.buzzQueue = []
-  await setQuizState(id, state)
   await updateQuiz(id, {
-    currentQuestion: nextQuestion,
+    currentQuestion: result.currentQuestion,
     questionStatus: 'CLOSED',
     buzzQueue: [],
   })
 
-  const isLast = nextQuestion >= quiz.totalQuestions
+  const isLast = (result.currentQuestion ?? 0) >= quiz.totalQuestions
   return Response.json({
-    currentQuestion: nextQuestion,
+    currentQuestion: result.currentQuestion,
     totalQuestions: quiz.totalQuestions,
     status: 'CLOSED',
     isLastQuestion: isLast,
