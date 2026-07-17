@@ -1,36 +1,126 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Quiz Buzzer
 
-## Getting Started
+Live buzzer system for college quiz events. Built with Next.js, TypeScript, Tailwind CSS, and Vercel KV.
 
-First, run the development server:
+## Architecture
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- **Next.js App Router** — API routes + React client components
+- **Vercel KV** — shared game state (Redis via Upstash)
+- **HTTP Polling** — participants poll every 500ms, organizer polls every 300ms
+- **No WebSockets, No Express, No SQL**
+
+```
+Participant  ──GET /api/state (500ms)──>  Next.js API  ──>  Vercel KV
+                POST /api/join                     │
+                                                   │
+Organizer   ──GET /api/state (300ms)──>            │
+                POST /api/start                    │
+                POST /api/end                      │
+                POST /api/next                     │
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Folder Structure
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```
+src/
+  app/
+    page.tsx              Home — links to /participant and /organizer
+    participant/
+      page.tsx            Participant join + waiting + buzz UI
+    organizer/
+      page.tsx            Organizer dashboard with controls
+    api/
+      state/route.ts      GET — full game state
+      join/route.ts       POST — add participant
+      buzz/route.ts       POST — submit buzz
+      start/route.ts      POST — open question (admin)
+      end/route.ts        POST — close question (admin)
+      next/route.ts       POST — advance question (admin)
+  lib/
+    types.ts              Participant, Buzz, GameState types
+    kv.ts                 Vercel KV client with in-memory fallback
+    admin.ts              Admin secret validation
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Environment Variables
 
-## Learn More
+| Variable | Required | Description |
+|---|---|---|
+| `ADMIN_SECRET` | Yes | Secret key for organizer endpoints. Sent as `x-admin-secret` header. |
+| `KV_URL` | For deployment | Vercel KV REST API URL (auto-injected by Vercel) |
+| `KV_REST_API_TOKEN` | For deployment | Vercel KV REST API token (auto-injected by Vercel) |
 
-To learn more about Next.js, take a look at the following resources:
+Without KV variables, the app uses an in-memory store (development only — state resets on server restart).
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Local Development
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+cp .env.example .env.local
+# Set ADMIN_SECRET in .env.local
+npm run dev
+```
 
-## Deploy on Vercel
+Open `http://localhost:3000` — joins as participant, or navigate to `/organizer` for the dashboard.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Production Deployment (Vercel)
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. Push to GitHub
+2. Import into Vercel
+3. Add `ADMIN_SECRET` environment variable
+4. Add Vercel KV storage (Redis) via the Vercel marketplace
+5. Deploy
+
+KV variables (`KV_URL`, `KV_REST_API_TOKEN`) are injected automatically by Vercel when KV is linked.
+
+## API Overview
+
+### `GET /api/state`
+
+Returns the full game state. No auth required.
+
+```json
+{
+  "currentQuestion": 0,
+  "status": "CLOSED",
+  "participants": [],
+  "buzzQueue": []
+}
+```
+
+### `POST /api/join`
+
+Add a participant. Body: `{ "name": "string" }`. Returns `{ id, name }`.
+
+Validation: name required, trimmed, max 50 characters.
+
+### `POST /api/buzz`
+
+Submit a buzz. Body: `{ "participantId": "uuid" }`. Returns the `Buzz` entry.
+
+Validates: question must be OPEN, participant must exist, no duplicate buzz.
+
+### `POST /api/start` (admin)
+
+Opens the current question for buzzing. Clears buzzQueue. Requires `x-admin-secret` header.
+
+### `POST /api/end` (admin)
+
+Closes the current question. Requires `x-admin-secret` header.
+
+### `POST /api/next` (admin)
+
+Advances to the next question (increments, sets CLOSED, clears buzzQueue). Requires `x-admin-secret` header.
+
+## Question Lifecycle
+
+```
+CLOSED → [START] → OPEN (buzzing accepted) → [END] → CLOSED → [NEXT] → question++ → CLOSED → repeat
+```
+
+## Limitations
+
+- Single quiz session — one game at a time
+- No authentication (participants join by name)
+- No scoring, no teams, no answer validation
+- Buzz ranking based on server reception order — near-simultaneous requests have a small race window
+- No WebSockets — uses HTTP polling (500ms participant, 300ms organizer)
