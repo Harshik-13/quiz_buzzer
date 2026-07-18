@@ -48,18 +48,20 @@ export default function QuizManagePage() {
   }, [publicId, adminHeaders, router])
 
   useEffect(() => {
-    if (!quiz || quiz.status !== 'RUNNING') return
-    let cancelled = false
+    const cancelled = { current: false }
     const tick = async () => {
       try {
         const res = await fetch(`/api/quiz/${publicId}/state`)
-        if (!cancelled && res.ok) setState(await res.json())
+        if (!cancelled.current && res.ok) setState(await res.json())
       } catch { /* ignore */ }
     }
     tick()
-    const interval = setInterval(tick, POLL_INTERVAL)
-    return () => { cancelled = true; clearInterval(interval) }
-  }, [quiz?.status, quiz?.id, publicId])
+    if (quiz && (quiz.status === 'PUBLISHED' || quiz.status === 'RUNNING')) {
+      const interval = setInterval(tick, POLL_INTERVAL)
+      return () => { cancelled.current = true; clearInterval(interval) }
+    }
+    return () => { cancelled.current = true }
+  }, [quiz?.id, publicId, quiz?.status])
 
   const callApi = useCallback(async (path: string) => {
     setError('')
