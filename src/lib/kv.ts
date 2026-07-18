@@ -362,10 +362,16 @@ return cjson.encode(buzz)
 
 const JOIN_LUA = `
 local raw = redis.call("GET", KEYS[1])
-if not raw then return '{"error":"No quiz"}' end
-local state = cjson.decode(raw)
-if state.status ~= "PUBLISHED" and state.status ~= "RUNNING" then
-  return '{"error":"Quiz not accepting participants"}'
+local state
+if not raw then
+  state = {currentQuestion=0, totalQuestions=0, status="PUBLISHED", participants={}, buzzQueue={}}
+else
+  local ok, decoded = pcall(cjson.decode, raw)
+  if not ok then return '{"error":"Failed to parse state"}' end
+  state = decoded
+  if state.status ~= "PUBLISHED" and state.status ~= "RUNNING" then
+    return '{"error":"Quiz not accepting participants"}'
+  end
 end
 local pid = ARGV[1]
 local pname = ARGV[2]
@@ -381,7 +387,8 @@ return cjson.encode(participant)
 const TOGGLE_QUESTION_LUA = `
 local raw = redis.call("GET", KEYS[1])
 if not raw then return '{"error":"No game state"}' end
-local state = cjson.decode(raw)
+local ok, state = pcall(cjson.decode, raw)
+if not ok then return '{"error":"Failed to parse state"}' end
 if state.status == "OPEN" then return '{"error":"Question already open"}' end
 state.status = "OPEN"
 state.buzzQueue = {}
@@ -392,7 +399,8 @@ return cjson.encode({status="OPEN", currentQuestion=state.currentQuestion})
 const NEXT_QUESTION_LUA = `
 local raw = redis.call("GET", KEYS[1])
 if not raw then return '{"error":"No game state"}' end
-local state = cjson.decode(raw)
+local ok, state = pcall(cjson.decode, raw)
+if not ok then return '{"error":"Failed to parse state"}' end
 if state.status == "OPEN" then return '{"error":"Close question first"}' end
 local total = tonumber(ARGV[1])
 local nextQ = state.currentQuestion + 1
@@ -412,7 +420,8 @@ return cjson.encode({action="NEXT", currentQuestion=nextQ, totalQuestions=total}
 const PREVIOUS_QUESTION_LUA = `
 local raw = redis.call("GET", KEYS[1])
 if not raw then return '{"error":"No game state"}' end
-local state = cjson.decode(raw)
+local ok, state = pcall(cjson.decode, raw)
+if not ok then return '{"error":"Failed to parse state"}' end
 local prevQ = state.currentQuestion - 1
 if prevQ < 1 then return '{"error":"Already at first question"}' end
 state.currentQuestion = prevQ
@@ -425,12 +434,24 @@ return cjson.encode({currentQuestion=prevQ, status="CLOSED", totalQuestions=stat
 const END_QUIZ_LUA = `
 local raw = redis.call("GET", KEYS[1])
 if not raw then return '{"error":"No game state"}' end
-local state = cjson.decode(raw)
+local ok, state = pcall(cjson.decode, raw)
+if not ok then return '{"error":"Failed to parse state"}' end
 local winner = ""
 if state.buzzQueue and #state.buzzQueue > 0 then winner = state.buzzQueue[1].participantName end
 state.status = "CLOSED"
 redis.call("SET", KEYS[1], cjson.encode(state))
 return cjson.encode({status="CLOSED", totalParticipants=#state.participants, winner=winner})
+`
+
+const CLOSE_QUESTION_LUA = `
+local raw = redis.call("GET", KEYS[1])
+if not raw then return '{"error":"No game state"}' end
+local ok, state = pcall(cjson.decode, raw)
+if not ok then return '{"error":"Failed to parse state"}' end
+if state.status ~= "OPEN" then return '{"error":"Question is not open"}' end
+state.status = "CLOSED"
+redis.call("SET", KEYS[1], cjson.encode(state))
+return cjson.encode({status="CLOSED", currentQuestion=state.currentQuestion})
 `
 
 // ── Atomic Operations ──
@@ -537,6 +558,21 @@ export async function atomicPreviousQuestion(quizId: string): Promise<{ currentQ
     state.buzzQueue = []
     await setQuizState(quizId, state)
     return { currentQuestion: prevQ, status: 'CLOSED' }
+  })
+}
+
+export async function atomicCloseQuestion(quizId: string): Promise<{ status?: string; currentQuestion?: number; error?: string }> {
+  if (kv) {
+    const result = await kv.eval(CLOSE_QUESTION_LUA, [`quiz:${quizId}:state`], [])
+    return result as { status?: string; currentQuestion?: number; error?: string }
+  }
+  return getMutex(quizId).exec(async () => {
+    const state = await getQuizState(quizId)
+    if (!state) return { error: 'No game state' }
+    if (state.status !== 'OPEN') return { error: 'Question is not open' }
+    state.status = 'CLOSED'
+    await setQuizState(quizId, state)
+    return { status: 'CLOSED', currentQuestion: state.currentQuestion }
   })
 }
 

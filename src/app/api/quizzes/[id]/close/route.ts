@@ -1,5 +1,5 @@
 import { requireAdmin } from '@/lib/admin'
-import { getQuiz, updateQuiz, getQuizState, setQuizState } from '@/lib/kv'
+import { getQuiz, updateQuiz, atomicCloseQuestion } from '@/lib/kv'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,22 +20,21 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       return Response.json({ error: 'Quiz is not running' }, { status: 400 })
     }
 
-    const state = await getQuizState(id)
-    if (!state) {
-      return Response.json({ error: 'No game state found for this quiz' }, { status: 409 })
-    }
-    if (state.status !== 'OPEN') {
-      return Response.json({ error: 'Question is not open' }, { status: 400 })
+    const result = await atomicCloseQuestion(id)
+    if (result.error) {
+      return Response.json({ error: result.error }, { status: 400 })
     }
 
-    state.status = 'CLOSED'
-    await setQuizState(id, state)
-    await updateQuiz(id, { questionStatus: 'CLOSED', currentQuestion: state.currentQuestion })
+    await updateQuiz(id, { questionStatus: 'CLOSED' })
 
-    return Response.json({ currentQuestion: state.currentQuestion, status: 'CLOSED' })
+    return Response.json({
+      currentQuestion: result.currentQuestion,
+      status: 'CLOSED',
+      totalQuestions: quiz.totalQuestions,
+    })
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Internal server error'
-    console.error('Unhandled error in end:', e)
+    console.error('Unhandled error in close:', e)
     return Response.json({ error: `Unexpected error: ${message}` }, { status: 500 })
   }
 }

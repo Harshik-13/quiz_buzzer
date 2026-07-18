@@ -1,7 +1,3 @@
-// E2E test for end-quiz API and error handling
-// Usage: node scripts/e2e.mjs [baseUrl] [adminSecret]
-// Defaults: http://localhost:3000 8_HOUR
-
 const BASE = process.argv[2] || 'http://localhost:3000'
 const SECRET = process.argv[3] || '8_HOUR'
 const HEADERS = { 'Content-Type': 'application/json', 'x-admin-secret': SECRET }
@@ -41,7 +37,7 @@ console.log(`\nE2E Tests — ${BASE}\n`)
 
 let quizId, publicId, participantId
 
-// ── End-Quiz Success Flow ──
+// ── Join-while-PUBLISHED Flow (was broken in KV mode) ──
 await test('create quiz', async () => {
   const { status, data } = await api('POST', '/api/quizzes', { name: 'E2E Test', totalQuestions: 3 })
   assert(status === 201, `Expected 201, got ${status}`)
@@ -57,14 +53,14 @@ await test('publish quiz', async () => {
   assert(status === 200, `Expected 200, got ${status}`)
 })
 
-await test('join participant', async () => {
+await test('join participant while PUBLISHED (no game state yet)', async () => {
   const { status, data } = await api('POST', `/api/quiz/${publicId}/join`, { name: 'Alice' })
   assert(status === 200, `Expected 200, got ${status}`)
   assert(data.id, 'No participant id')
   participantId = data.id
 })
 
-await test('start quiz (DRAFT→RUNNING)', async () => {
+await test('start quiz (PUBLISHED→RUNNING)', async () => {
   const { status, data } = await api('POST', `/api/quizzes/${quizId}/start`)
   assert(status === 200, `Expected 200, got ${status}`)
   assert(data.status === 'RUNNING', `Expected RUNNING, got ${data.status}`)
@@ -74,6 +70,19 @@ await test('buzz', async () => {
   const { status, data } = await api('POST', `/api/quiz/${publicId}/buzz`, { participantId })
   assert(status === 200, `Expected 200, got ${status}`)
   assert(data.rank === 1, `Expected rank 1, got ${data.rank}`)
+})
+
+// ── Close-question route (was calling nonexistent /end) ──
+await test('close question', async () => {
+  const { status, data } = await api('POST', `/api/quizzes/${quizId}/close`)
+  assert(status === 200, `Expected 200, got ${status}`)
+  assert(data.status === 'CLOSED', `Expected CLOSED, got ${data.status}`)
+})
+
+await test('re-open question via start toggle', async () => {
+  const { status, data } = await api('POST', `/api/quizzes/${quizId}/start`)
+  assert(status === 200, `Expected 200, got ${status}`)
+  assert(data.status === 'OPEN', `Expected OPEN, got ${data.status}`)
 })
 
 await test('end quiz', async () => {
@@ -109,7 +118,7 @@ await test('end-quiz on draft quiz returns 400', async () => {
   assert(endStatus === 400, `Expected 400, got ${endStatus}`)
 })
 
-// ── Backwards Compatibility: duplicate preserves statistics ──
+// ── Backwards Compatibility ──
 await test('duplicate of finished quiz creates DRAFT copy', async () => {
   const { status, data } = await api('POST', `/api/quizzes/${quizId}/duplicate`)
   assert(status === 201, `Expected 201, got ${status}`)
@@ -118,7 +127,6 @@ await test('duplicate of finished quiz creates DRAFT copy', async () => {
   assert(data.totalQuestions === 3, `Expected 3 questions, got ${data.totalQuestions}`)
 })
 
-// ── Other endpoint error handling ──
 await test('start on finished quiz returns 409', async () => {
   const { status } = await api('POST', `/api/quizzes/${quizId}/start`)
   assert(status === 409, `Expected 409, got ${status}`)
@@ -132,6 +140,25 @@ await test('archive on running quiz returns 409', async () => {
   await api('POST', `/api/quizzes/${aid}/start`)
   const { status: archStatus } = await api('POST', `/api/quizzes/${aid}/archive`)
   assert(archStatus === 409, `Expected 409, got ${archStatus}`)
+})
+
+// ── Close-question error cases ──
+await test('close on draft quiz returns 400', async () => {
+  const { status } = await api('POST', '/api/quizzes/draft-only-id/close')
+  assert(status === 404, `Expected 404, got ${status}`)
+})
+
+await test('close with no auth returns 401', async () => {
+  const { status } = await api('POST', `/api/quizzes/${quizId}/close`, null, { 'Content-Type': 'application/json' })
+  assert(status === 401, `Expected 401, got ${status}`)
+})
+
+await test('get quiz metadata by publicId returns correct data', async () => {
+  const { status, data } = await api('GET', `/api/quiz/${publicId}`, null, {})
+  assert(status === 200, `Expected 200, got ${status}`)
+  assert(data.name === 'E2E Test', `Expected 'E2E Test', got ${data.name}`)
+  assert(data.totalQuestions === 3, `Expected 3, got ${data.totalQuestions}`)
+  assert(data.status === 'FINISHED', `Expected FINISHED, got ${data.status}`)
 })
 
 // ── Summary ──

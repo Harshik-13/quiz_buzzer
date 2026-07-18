@@ -98,7 +98,7 @@ export default function LiveQuizPage() {
 
   const handleEndQuestion = () => {
     if (!quiz) return
-    const path = `/api/quizzes/${quiz.id}/end`
+    const path = `/api/quizzes/${quiz.id}/close`
     callApi(path)
   }
 
