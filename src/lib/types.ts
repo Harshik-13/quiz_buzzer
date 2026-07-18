@@ -18,6 +18,7 @@ export interface GameState {
   status: GameStatus
   participants: Participant[]
   buzzQueue: Buzz[]
+  finished?: boolean
 }
 
 export type QuizStatus = 'DRAFT' | 'PUBLISHED' | 'RUNNING' | 'FINISHED' | 'ARCHIVED'

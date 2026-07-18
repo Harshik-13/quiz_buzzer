@@ -52,7 +52,18 @@ export default function QuizManagePage() {
     const tick = async () => {
       try {
         const res = await fetch(`/api/quiz/${publicId}/state`)
-        if (!cancelled.current && res.ok) setState(await res.json())
+        if (!cancelled.current && res.ok) {
+          const data = await res.json()
+          setState(data)
+          if (data.finished) {
+            const listRes = await fetch('/api/quizzes', { headers: adminHeaders() })
+            if (listRes.ok) {
+              const quizzes: Quiz[] = await listRes.json()
+              const found = quizzes.find(q => q.publicId === publicId)
+              if (found) setQuiz(found)
+            }
+          }
+        }
       } catch { /* ignore */ }
     }
     tick()

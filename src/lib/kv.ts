@@ -397,9 +397,10 @@ local total = tonumber(ARGV[1])
 local nextQ = state.currentQuestion + 1
 if nextQ > total then
   state.status = "CLOSED"
+  state.finished = true
   redis.call("SET", KEYS[1], cjson.encode(state))
   return cjson.encode({action="FINISH", currentQuestion=state.currentQuestion,
-    totalParticipants=#state.participants, winner=(state.buzzQueue[1] and state.buzzQueue[1].participantName or "")})
+    totalParticipants=#state.participants, winner=(state.buzzQueue[1] and state.buzzQueue[1].participantName or ""), finished=true})
 end
 state.currentQuestion = nextQ
 state.status = "CLOSED"
@@ -430,8 +431,9 @@ if not ok then return '{"error":"Failed to parse state"}' end
 local winner = ""
 if state.buzzQueue and #state.buzzQueue > 0 then winner = state.buzzQueue[1].participantName end
 state.status = "CLOSED"
+state.finished = true
 redis.call("SET", KEYS[1], cjson.encode(state))
-return cjson.encode({status="CLOSED", totalParticipants=#state.participants, winner=winner})
+return cjson.encode({status="CLOSED", totalParticipants=#state.participants, winner=winner, finished=true})
 `
 
 const CLOSE_QUESTION_LUA = `
@@ -519,6 +521,7 @@ export async function atomicNextQuestion(quizId: string, totalQuestions: number)
     const nextQ = state.currentQuestion + 1
     if (nextQ > totalQuestions) {
       state.status = 'CLOSED'
+      state.finished = true
       await setQuizState(quizId, state)
       return {
         action: 'FINISH', currentQuestion: state.currentQuestion,
@@ -576,6 +579,7 @@ export async function atomicEndQuiz(quizId: string): Promise<{ status?: string; 
     const state = await getQuizState(quizId)
     if (!state) return { error: 'No game state' }
     state.status = 'CLOSED'
+    state.finished = true
     await setQuizState(quizId, state)
     return {
       totalParticipants: state.participants.length,

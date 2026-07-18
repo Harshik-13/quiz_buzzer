@@ -50,7 +50,10 @@ export default function LiveQuizPage() {
         const res = await fetch(`/api/quiz/${publicId}/state`)
         if (!cancelled && res.ok) {
           const data = await res.json()
-          if (!cancelled) setLiveState(data)
+          if (!cancelled) {
+            setLiveState(data)
+            if (data.finished) setFinished(true)
+          }
         }
       } catch { /* ignore */ }
     }

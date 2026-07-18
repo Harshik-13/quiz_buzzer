@@ -198,6 +198,25 @@ export default function QuizParticipantPage() {
   const hasBuzzed = !!myBuzz
   const buzzDisabled = buzzing || hasBuzzed || status !== 'OPEN'
 
+  if (state?.finished) {
+    return (
+      <div className="flex flex-1 items-center justify-center p-8">
+        <div className="w-full max-w-sm space-y-6 rounded-xl border border-purple-200 bg-purple-50 p-8 text-center shadow-sm">
+          <h1 className="text-3xl font-bold text-purple-800">Quiz Finished</h1>
+          <p className="text-xl font-semibold text-zinc-800">{quizInfo.name}</p>
+          {hasBuzzed && (
+            <div className="space-y-1">
+              <p className="text-sm text-zinc-500">Your rank</p>
+              <p className="text-4xl font-bold text-purple-700">#{myBuzz!.rank}</p>
+            </div>
+          )}
+          <p className="text-sm text-zinc-500">Thank you for participating!</p>
+          <a href="/" className="inline-block rounded-lg border bg-white px-5 py-2 text-sm font-semibold hover:bg-zinc-50">Go Home</a>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="flex flex-1 items-center justify-center p-8">
       <div className="w-full max-w-sm space-y-6 rounded-xl border p-8 text-center shadow-sm">
