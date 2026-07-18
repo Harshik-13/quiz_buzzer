@@ -96,7 +96,9 @@ export default function LiveQuizPage() {
   const handleStartQuestion = () => {
     if (!quiz) return
     const path = `/api/quizzes/${quiz.id}/start`
-    callApi(path)
+    callApi(path, () => {
+      setQuiz(prev => prev ? { ...prev, status: 'RUNNING' as const } : null)
+    })
   }
 
   const handleEndQuestion = () => {
