@@ -42,8 +42,9 @@ export default function LiveQuizPage() {
     load()
   }, [publicId, adminHeaders, router])
 
+  const isFirstPoll = useRef(true)
   useEffect(() => {
-    if (!quiz || quiz.status === 'FINISHED') return
+    if (finished) return
     let cancelled = false
     const tick = async () => {
       try {
@@ -57,30 +58,13 @@ export default function LiveQuizPage() {
         }
       } catch { /* ignore */ }
     }
-    tick()
+    if (isFirstPoll.current) { tick(); isFirstPoll.current = false }
     const interval = setInterval(tick, POLL_INTERVAL)
     return () => { cancelled = true; clearInterval(interval) }
-  }, [quiz?.status, quiz?.id, publicId])
+  }, [publicId, finished])
 
   useEffect(() => {
-    if (!quiz || quiz.status !== 'WAITING_ROOM') return
-    let cancelled = false
-    const tick = async () => {
-      try {
-        const res = await fetch(`/api/quiz/${publicId}/state`)
-        if (!cancelled && res.ok) {
-          const data = await res.json()
-          if (!cancelled) setLiveState(data)
-        }
-      } catch { /* ignore */ }
-    }
-    tick()
-    const interval = setInterval(tick, 1000)
-    return () => { cancelled = true; clearInterval(interval) }
-  }, [quiz?.status, quiz?.id, publicId])
-
-  useEffect(() => {
-    if (!quiz) return
+    if (!quiz || finished) return
     const interval = setInterval(async () => {
       try {
         const res = await fetch('/api/quizzes', { headers: adminHeaders() })
@@ -95,51 +79,80 @@ export default function LiveQuizPage() {
       } catch { /* ignore */ }
     }, 2000)
     return () => clearInterval(interval)
-  }, [quiz?.id, publicId, adminHeaders])
+  }, [quiz?.id, publicId, adminHeaders, finished])
 
-  const callApi = useCallback(async (path: string, onSuccess?: () => void) => {
+  const callApi = useCallback(async (path: string, onSuccess?: (data: Record<string, unknown>) => void) => {
     setError('')
     setSending(path)
     try {
       const res = await fetch(path, { method: 'POST', headers: adminHeaders() })
       if (!res.ok) { const d = await res.json(); setError(d.error || 'Request failed') }
       else {
-        if (onSuccess) onSuccess()
+        const data = await res.json()
+        if (onSuccess) onSuccess(data)
       }
     } catch { setError('Network error') }
     finally { setSending('') }
   }, [adminHeaders])
 
-  const handleStartQuestion = () => {
+  const handleStart = () => {
     if (!quiz) return
-    const path = `/api/quizzes/${quiz.id}/start`
-    callApi(path, () => {
-      setQuiz(prev => prev ? { ...prev, status: 'LIVE' as const } : null)
+    const isStarting = quiz.status === 'DRAFT' || quiz.status === 'WAITING_ROOM'
+    callApi(`/api/quizzes/${quiz.id}/start`, (data: Record<string, unknown>) => {
+      if (isStarting) {
+        setQuiz(prev => prev ? { ...prev, status: 'LIVE' as const } : null)
+        setLiveState(prev => prev ? {
+          ...prev,
+          currentQuestion: (data.currentQuestion as number) ?? 1,
+          status: (data.questionStatus as string) ?? 'WAITING',
+        } : null)
+      } else {
+        setLiveState(prev => prev ? {
+          ...prev,
+          status: (data.status as string) ?? 'OPEN',
+          buzzQueue: [],
+        } : null)
+      }
     })
   }
 
   const handleEndQuestion = () => {
     if (!quiz) return
-    const path = `/api/quizzes/${quiz.id}/close`
-    callApi(path)
+    callApi(`/api/quizzes/${quiz.id}/close`, (data: Record<string, unknown>) => {
+      setLiveState(prev => prev ? {
+        ...prev,
+        status: (data.status as string) ?? 'CLOSED',
+      } : null)
+    })
   }
 
   const handleNext = () => {
     if (!quiz) return
-    const path = `/api/quizzes/${quiz.id}/next`
-    callApi(path)
+    callApi(`/api/quizzes/${quiz.id}/next`, (data: Record<string, unknown>) => {
+      setLiveState(prev => prev ? {
+        ...prev,
+        currentQuestion: (data.currentQuestion as number) ?? prev.currentQuestion,
+        status: (data.status as string) ?? 'WAITING',
+        buzzQueue: [],
+      } : null)
+    })
   }
 
   const handlePrevious = () => {
     if (!quiz) return
-    const path = `/api/quizzes/${quiz.id}/previous`
-    callApi(path)
+    callApi(`/api/quizzes/${quiz.id}/previous`, (data: Record<string, unknown>) => {
+      setLiveState(prev => prev ? {
+        ...prev,
+        currentQuestion: (data.currentQuestion as number) ?? prev.currentQuestion,
+        status: (data.status as string) ?? 'WAITING',
+        buzzQueue: [],
+      } : null)
+    })
   }
 
   const handleEndQuiz = () => {
     if (!quiz) return
-    const path = `/api/quizzes/${quiz.id}/end-quiz`
-    callApi(path, () => setFinished(true))
+    callApi(`/api/quizzes/${quiz.id}/end-quiz`, () => setFinished(true))
   }
 
   if (loading) {
@@ -193,7 +206,7 @@ export default function LiveQuizPage() {
           </div>
         </div>
         <div className="flex justify-center">
-          <button onClick={handleStartQuestion} disabled={sending !== ''} className="rounded-lg bg-green-600 px-6 py-3 text-lg font-semibold text-white hover:bg-green-700 disabled:opacity-50">
+          <button onClick={handleStart} disabled={sending !== ''} className="rounded-lg bg-green-600 px-6 py-3 text-lg font-semibold text-white hover:bg-green-700 disabled:opacity-50">
             {sending === `/api/quizzes/${quiz.id}/start` ? 'Starting...' : 'Start Quiz'}
           </button>
         </div>
@@ -238,7 +251,7 @@ export default function LiveQuizPage() {
 
         {questionStatus === 'WAITING' || questionStatus === 'CLOSED' ? (
           <button
-            onClick={handleStartQuestion}
+            onClick={handleStart}
             disabled={sending !== ''}
             className="rounded-xl bg-green-600 px-8 py-4 text-base font-semibold text-white hover:bg-green-700 disabled:opacity-50"
           >
