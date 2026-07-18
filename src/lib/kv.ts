@@ -4,7 +4,7 @@ import { v4 as uuid } from 'uuid'
 import { getOrganizerId } from './admin'
 
 function getKv() {
-  const url = process.env.KV_REST_API_URL
+  const url = process.env.KV_REST_API_URL || process.env.KV_URL
   const token = process.env.KV_REST_API_TOKEN
   if (url && token) {
     return createClient({ url, token })
@@ -16,7 +16,10 @@ const kv = getKv()
 
 function requireKv(): void {
   if (process.env.NODE_ENV === 'production' && !kv) {
-    throw new Error('Vercel KV is not configured. Set KV_REST_API_URL and KV_REST_API_TOKEN.')
+    throw new Error(
+      'Vercel KV is not configured. Link KV storage in the Vercel dashboard, ' +
+      'or set KV_REST_API_URL (or KV_URL) and KV_REST_API_TOKEN in your environment.'
+    )
   }
 }
 
@@ -107,6 +110,7 @@ export async function setQuizState(quizId: string, state: GameState): Promise<vo
 // ── Public ID Resolution ──
 
 export async function getQuizByPublicId(publicId: string): Promise<Quiz | null> {
+  requireKv()
   if (kv) {
     try {
       const quizId = await kv.get<string>(`${PUBLIC_ID_PREFIX}${publicId}`)
@@ -146,6 +150,7 @@ async function removePublicIdIndex(publicId: string): Promise<void> {
 // ── Quiz CRUD ──
 
 export async function listQuizzes(): Promise<Quiz[]> {
+  requireKv()
   if (kv) {
     try {
       const ids = await kv.get<string[]>(INDEX_KEY)
@@ -169,6 +174,7 @@ export async function listQuizzesByOrganizer(organizerId: string): Promise<Quiz[
 }
 
 export async function getQuiz(id: string): Promise<Quiz | null> {
+  requireKv()
   if (kv) {
     try {
       return await kv.get<Quiz>(`quiz:${id}`)
@@ -180,6 +186,7 @@ export async function getQuiz(id: string): Promise<Quiz | null> {
 }
 
 export async function createQuiz(data: { name: string; description?: string; totalQuestions: number }): Promise<Quiz> {
+  requireKv()
   const now = Date.now()
   let publicId = generatePublicId()
   while (await getQuizByPublicId(publicId)) {
@@ -220,6 +227,7 @@ export async function createQuiz(data: { name: string; description?: string; tot
 }
 
 export async function updateQuiz(id: string, data: Partial<Quiz>): Promise<Quiz | null> {
+  requireKv()
   const quiz = await getQuiz(id)
   if (!quiz) return null
   const updated = { ...quiz, ...data, id: quiz.id, updatedAt: Date.now() }
@@ -237,6 +245,7 @@ export async function updateQuiz(id: string, data: Partial<Quiz>): Promise<Quiz 
 }
 
 export async function deleteQuiz(id: string): Promise<boolean> {
+  requireKv()
   const quiz = await getQuiz(id)
   if (!quiz) return false
 
@@ -258,6 +267,7 @@ export async function deleteQuiz(id: string): Promise<boolean> {
 }
 
 export async function duplicateQuiz(id: string): Promise<Quiz | null> {
+  requireKv()
   const original = await getQuiz(id)
   if (!original) return null
   const now = Date.now()
@@ -300,6 +310,7 @@ export async function duplicateQuiz(id: string): Promise<Quiz | null> {
 }
 
 export async function activateQuiz(id: string): Promise<Quiz | null> {
+  requireKv()
   const quiz = await getQuiz(id)
   if (!quiz) return null
 
