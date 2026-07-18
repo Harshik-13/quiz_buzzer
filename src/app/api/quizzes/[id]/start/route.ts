@@ -24,23 +24,26 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       return Response.json({ error: 'Cannot start an archived quiz' }, { status: 409 })
     }
 
-    if (quiz.status === 'DRAFT' || quiz.status === 'PUBLISHED') {
+    if (quiz.status === 'DRAFT' || quiz.status === 'WAITING_ROOM') {
       const firstQuestion = 1
       await updateQuiz(id, {
-        status: 'RUNNING',
+        status: 'LIVE',
         lastPlayedAt: Date.now(),
       })
-      await activateQuiz(id, firstQuestion, 'OPEN')
+      await activateQuiz(id, firstQuestion, 'WAITING')
 
-      return Response.json({ status: 'RUNNING', currentQuestion: firstQuestion, totalQuestions: quiz.totalQuestions, questionStatus: 'OPEN' })
+      return Response.json({ status: 'LIVE', currentQuestion: firstQuestion, totalQuestions: quiz.totalQuestions, questionStatus: 'WAITING' })
     }
 
-    const result = await atomicToggleQuestion(id)
-    if (result.error) {
-      return Response.json({ error: result.error }, { status: 400 })
+    if (quiz.status === 'LIVE') {
+      const result = await atomicToggleQuestion(id)
+      if (result.error) {
+        return Response.json({ error: result.error }, { status: 400 })
+      }
+      return Response.json({ currentQuestion: result.currentQuestion, status: 'OPEN', totalQuestions: quiz.totalQuestions })
     }
 
-    return Response.json({ currentQuestion: result.currentQuestion, status: 'OPEN', totalQuestions: quiz.totalQuestions })
+    return Response.json({ error: 'Quiz cannot be started' }, { status: 400 })
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Internal server error'
     console.error('Unhandled error in start:', e)

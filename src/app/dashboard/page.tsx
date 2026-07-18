@@ -113,7 +113,7 @@ export default function DashboardPage() {
       const res = await fetch(`/api/quizzes/${id}`, {
         method: 'PUT',
         headers: adminHeaders(),
-        body: JSON.stringify({ status: 'PUBLISHED' }),
+        body: JSON.stringify({ status: 'WAITING_ROOM' }),
       })
       if (res.ok) await loadQuizzes()
       else { const d = await res.json(); setError(d.error || 'Failed to publish') }
@@ -135,7 +135,7 @@ export default function DashboardPage() {
   }
 
   const filteredQuizzes = quizzes.filter(q => {
-    if (tab === 'live') return q.status === 'PUBLISHED' || q.status === 'RUNNING'
+    if (tab === 'live') return q.status === 'WAITING_ROOM' || q.status === 'LIVE'
     if (tab === 'draft') return q.status === 'DRAFT'
     return true
   })
@@ -143,8 +143,8 @@ export default function DashboardPage() {
   const statusBadge = (q: Quiz) => {
     const colors: Record<string, string> = {
       DRAFT: 'bg-zinc-100 text-zinc-600',
-      PUBLISHED: 'bg-blue-100 text-blue-700',
-      RUNNING: 'bg-green-100 text-green-700',
+      WAITING_ROOM: 'bg-blue-100 text-blue-700',
+      LIVE: 'bg-green-100 text-green-700',
       FINISHED: 'bg-purple-100 text-purple-700',
       ARCHIVED: 'bg-amber-100 text-amber-700',
     }
@@ -231,7 +231,7 @@ export default function DashboardPage() {
               </div>
               {q.description && <p className="text-sm text-zinc-500 line-clamp-2">{q.description}</p>}
 
-              {(q.status === 'PUBLISHED' || q.status === 'RUNNING') && (
+              {(q.status === 'WAITING_ROOM' || q.status === 'LIVE') && (
                 <div className="flex items-center gap-2 rounded-md bg-zinc-50 p-2">
                   <span className="text-xs text-zinc-500 truncate flex-1">{origin}/quiz/{q.publicId}</span>
                   <button
@@ -249,25 +249,25 @@ export default function DashboardPage() {
               </div>
 
               <div className="flex flex-wrap gap-2 pt-1">
-                {q.status === 'RUNNING' ? (
+                {q.status === 'LIVE' ? (
                   <button onClick={() => router.push(`/quiz/${q.publicId}/manage`)} className="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-green-700">Open Control Panel</button>
-                ) : q.status === 'PUBLISHED' ? (
+                ) : q.status === 'WAITING_ROOM' ? (
                   <button onClick={() => router.push(`/quiz/${q.publicId}/manage`)} className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700">Open</button>
                 ) : q.status === 'FINISHED' || q.status === 'ARCHIVED' ? (
                   <button onClick={() => router.push(`/quiz/${q.publicId}/manage`)} className="rounded-lg border px-3 py-1.5 text-xs font-semibold hover:bg-zinc-50">View</button>
                 ) : (
                   <button onClick={() => router.push(`/quiz/${q.publicId}/manage`)} className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700">Edit</button>
                 )}
-                {q.status === 'PUBLISHED' && (
+                {q.status === 'WAITING_ROOM' && (
                   <button onClick={() => router.push(`/quiz/${q.publicId}/manage`)} className="rounded-lg border px-3 py-1.5 text-xs font-semibold hover:bg-zinc-50">Edit</button>
                 )}
                 {q.status === 'DRAFT' && (
                   <button onClick={() => handlePublish(q.id)} className="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-green-700">Make Live</button>
                 )}
-                {q.status !== 'RUNNING' && (
+                {q.status !== 'LIVE' && (
                   <button onClick={() => handleDuplicate(q.id)} className="rounded-lg border px-3 py-1.5 text-xs font-semibold hover:bg-zinc-50">Duplicate</button>
                 )}
-                {q.status !== 'ARCHIVED' && q.status !== 'RUNNING' && (
+                {q.status !== 'ARCHIVED' && q.status !== 'LIVE' && (
                   <button onClick={() => handleArchive(q.id)} className="rounded-lg border px-3 py-1.5 text-xs font-semibold hover:bg-zinc-50">Archive</button>
                 )}
                 {q.status === 'ARCHIVED' && (
@@ -281,7 +281,7 @@ export default function DashboardPage() {
                     <button onClick={() => handleDelete(q.id)} className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700">Confirm</button>
                     <button onClick={() => setDeleteConfirm(null)} className="rounded-lg border px-3 py-1.5 text-xs font-semibold hover:bg-zinc-50">Cancel</button>
                   </div>
-                ) : q.status !== 'RUNNING' ? (
+                ) : q.status !== 'LIVE' ? (
                   <button onClick={() => setDeleteConfirm(q.id)} className="rounded-lg border border-red-300 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50">Delete</button>
                 ) : null}
               </div>

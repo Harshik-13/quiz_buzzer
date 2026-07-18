@@ -16,7 +16,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const quiz = await getQuiz(id)
     if (!quiz) return Response.json({ error: 'Quiz not found' }, { status: 404 })
     if (quiz.organizerId !== organizerId) return Response.json({ error: 'Unauthorized' }, { status: 401 })
-    if (quiz.status !== 'RUNNING') {
+    if (quiz.status !== 'LIVE') {
       return Response.json({ error: 'Quiz is not running' }, { status: 400 })
     }
 
@@ -25,24 +25,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       return Response.json({ error: result.error }, { status: 400 })
     }
 
-    if (result.action === 'FINISH') {
-      await updateQuiz(id, {
-        status: 'FINISHED',
-        statistics: {
-          totalParticipants: result.totalParticipants ?? 0,
-          totalQuestions: quiz.totalQuestions,
-          winner: result.winner ?? '',
-          completionTime: Date.now() - (quiz.lastPlayedAt || Date.now()),
-          fastestBuzz: 0,
-        },
-      })
-      return Response.json({ status: 'FINISHED', currentQuestion: result.currentQuestion, totalQuestions: quiz.totalQuestions })
-    }
-
     return Response.json({
       currentQuestion: result.currentQuestion,
       totalQuestions: quiz.totalQuestions,
-      status: 'CLOSED',
+      status: 'WAITING',
     })
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Internal server error'

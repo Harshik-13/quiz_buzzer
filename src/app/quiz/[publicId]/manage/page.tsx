@@ -67,7 +67,7 @@ export default function QuizManagePage() {
       } catch { /* ignore */ }
     }
     tick()
-    if (quiz && (quiz.status === 'PUBLISHED' || quiz.status === 'RUNNING')) {
+    if (quiz && (quiz.status === 'WAITING_ROOM' || quiz.status === 'LIVE')) {
       const interval = setInterval(tick, POLL_INTERVAL)
       return () => { cancelled.current = true; clearInterval(interval) }
     }
@@ -82,7 +82,7 @@ export default function QuizManagePage() {
       if (!res.ok) { const d = await res.json(); setError(d.error || 'Request failed') }
       else {
         const data = await res.json()
-        if (data.status === 'RUNNING') {
+        if (data.status === 'LIVE') {
           router.push(`/quiz/${publicId}/live`)
           return
         }
@@ -127,7 +127,7 @@ export default function QuizManagePage() {
         <h1 className="text-2xl font-bold">{quiz.name}</h1>
       </div>
 
-      {(quiz.status === 'PUBLISHED' || quiz.status === 'RUNNING') && (
+      {(quiz.status === 'WAITING_ROOM' || quiz.status === 'LIVE') && (
         <div className="flex items-center gap-2 rounded-lg border bg-zinc-50 px-4 py-2">
           <span className="text-sm text-zinc-500 truncate flex-1">{shareLink}</span>
           <button onClick={copyLink} className="text-sm font-medium text-blue-600 hover:text-blue-700 shrink-0">
@@ -162,7 +162,7 @@ export default function QuizManagePage() {
         </div>
       )}
 
-      {quiz.status === 'PUBLISHED' && (
+      {quiz.status === 'WAITING_ROOM' && (
         <div className="rounded-xl border p-6 text-center space-y-4">
           <p className="text-zinc-500">Quiz is published. Share the link with participants.</p>
           <p className="text-sm text-zinc-400">{participants.length} participant{participants.length !== 1 ? 's' : ''} joined</p>
@@ -174,7 +174,7 @@ export default function QuizManagePage() {
         </div>
       )}
 
-      {(quiz.status === 'RUNNING') && (
+      {(quiz.status === 'LIVE') && (
         <div className="rounded-xl border p-8 text-center space-y-4">
           <p className="text-lg font-semibold text-green-700">Quiz is Live</p>
           <p className="text-sm text-zinc-500">Question {q} of {quiz.totalQuestions} · {participants.length} participant{participants.length !== 1 ? 's' : ''}</p>

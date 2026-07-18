@@ -49,21 +49,34 @@ await test('create quiz', async () => {
 })
 
 await test('publish quiz', async () => {
-  const { status } = await api('PUT', `/api/quizzes/${quizId}`, { status: 'PUBLISHED' })
+  const { status } = await api('PUT', `/api/quizzes/${quizId}`, { status: 'WAITING_ROOM' })
   assert(status === 200, `Expected 200, got ${status}`)
 })
 
-await test('join participant while PUBLISHED (no game state yet)', async () => {
+await test('join participant while WAITING_ROOM (no game state yet)', async () => {
   const { status, data } = await api('POST', `/api/quiz/${publicId}/join`, { name: 'Alice' })
   assert(status === 200, `Expected 200, got ${status}`)
   assert(data.id, 'No participant id')
   participantId = data.id
 })
 
-await test('start quiz (PUBLISHED→RUNNING)', async () => {
+await test('start quiz (WAITING_ROOM→LIVE)', async () => {
   const { status, data } = await api('POST', `/api/quizzes/${quizId}/start`)
   assert(status === 200, `Expected 200, got ${status}`)
-  assert(data.status === 'RUNNING', `Expected RUNNING, got ${data.status}`)
+  assert(data.status === 'LIVE', `Expected LIVE, got ${data.status}`)
+  assert(data.questionStatus === 'WAITING', `Expected questionStatus WAITING, got ${data.questionStatus}`)
+})
+
+await test('attempt buzz before question opened returns error', async () => {
+  const { status, data } = await api('POST', `/api/quiz/${publicId}/buzz`, { participantId })
+  assert(status === 400, `Expected 400, got ${status}`)
+  assert(data.error, 'Expected error message')
+})
+
+await test('start question (WAITING→OPEN)', async () => {
+  const { status, data } = await api('POST', `/api/quizzes/${quizId}/start`)
+  assert(status === 200, `Expected 200, got ${status}`)
+  assert(data.status === 'OPEN', `Expected OPEN, got ${data.status}`)
 })
 
 await test('buzz', async () => {
@@ -72,7 +85,7 @@ await test('buzz', async () => {
   assert(data.rank === 1, `Expected rank 1, got ${data.rank}`)
 })
 
-// ── Close-question route (was calling nonexistent /end) ──
+// ── Close-question route ──
 await test('close question', async () => {
   const { status, data } = await api('POST', `/api/quizzes/${quizId}/close`)
   assert(status === 200, `Expected 200, got ${status}`)
@@ -83,6 +96,58 @@ await test('re-open question via start toggle', async () => {
   const { status, data } = await api('POST', `/api/quizzes/${quizId}/start`)
   assert(status === 200, `Expected 200, got ${status}`)
   assert(data.status === 'OPEN', `Expected OPEN, got ${data.status}`)
+})
+
+await test('close question again', async () => {
+  const { status, data } = await api('POST', `/api/quizzes/${quizId}/close`)
+  assert(status === 200, `Expected 200, got ${status}`)
+  assert(data.status === 'CLOSED', `Expected CLOSED, got ${data.status}`)
+})
+
+await test('next question (CLOSED→WAITING)', async () => {
+  const { status, data } = await api('POST', `/api/quizzes/${quizId}/next`)
+  assert(status === 200, `Expected 200, got ${status}`)
+  assert(data.currentQuestion === 2, `Expected question 2, got ${data.currentQuestion}`)
+  assert(data.status === 'WAITING', `Expected WAITING, got ${data.status}`)
+})
+
+await test('start question 2', async () => {
+  const { status, data } = await api('POST', `/api/quizzes/${quizId}/start`)
+  assert(status === 200, `Expected 200, got ${status}`)
+  assert(data.status === 'OPEN', `Expected OPEN, got ${data.status}`)
+})
+
+await test('close question 2', async () => {
+  const { status, data } = await api('POST', `/api/quizzes/${quizId}/close`)
+  assert(status === 200, `Expected 200, got ${status}`)
+  assert(data.status === 'CLOSED', `Expected CLOSED, got ${data.status}`)
+})
+
+await test('previous question returns WAITING', async () => {
+  const { status, data } = await api('POST', `/api/quizzes/${quizId}/previous`)
+  assert(status === 200, `Expected 200, got ${status}`)
+  assert(data.currentQuestion === 1, `Expected question 1, got ${data.currentQuestion}`)
+  assert(data.status === 'WAITING', `Expected WAITING, got ${data.status}`)
+})
+
+await test('next to last question', async () => {
+  const { status, data } = await api('POST', `/api/quizzes/${quizId}/next`)
+  assert(status === 200, `Expected 200, got ${status}`)
+  assert(data.currentQuestion === 2, `Expected question 2, got ${data.currentQuestion}`)
+  assert(data.status === 'WAITING', `Expected WAITING, got ${data.status}`)
+})
+
+await test('next to question 3', async () => {
+  const { status, data } = await api('POST', `/api/quizzes/${quizId}/next`)
+  assert(status === 200, `Expected 200, got ${status}`)
+  assert(data.currentQuestion === 3, `Expected question 3, got ${data.currentQuestion}`)
+  assert(data.status === 'WAITING', `Expected WAITING, got ${data.status}`)
+})
+
+await test('next past last question returns error', async () => {
+  const { status, data } = await api('POST', `/api/quizzes/${quizId}/next`)
+  assert(status === 400, `Expected 400, got ${status}`)
+  assert(data.error, 'Expected error message')
 })
 
 await test('end quiz', async () => {
@@ -132,11 +197,11 @@ await test('start on finished quiz returns 409', async () => {
   assert(status === 409, `Expected 409, got ${status}`)
 })
 
-await test('archive on running quiz returns 409', async () => {
+await test('archive on live quiz returns 409', async () => {
   const { status, data } = await api('POST', '/api/quizzes', { name: 'To Archive', totalQuestions: 2 })
   assert(status === 201, `Failed to create quiz`)
   const aid = data.id
-  await api('PUT', `/api/quizzes/${aid}`, { status: 'PUBLISHED' })
+  await api('PUT', `/api/quizzes/${aid}`, { status: 'WAITING_ROOM' })
   await api('POST', `/api/quizzes/${aid}/start`)
   const { status: archStatus } = await api('POST', `/api/quizzes/${aid}/archive`)
   assert(archStatus === 409, `Expected 409, got ${archStatus}`)

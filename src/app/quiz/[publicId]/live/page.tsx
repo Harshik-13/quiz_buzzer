@@ -63,6 +63,23 @@ export default function LiveQuizPage() {
   }, [quiz?.status, quiz?.id, publicId])
 
   useEffect(() => {
+    if (!quiz || quiz.status !== 'WAITING_ROOM') return
+    let cancelled = false
+    const tick = async () => {
+      try {
+        const res = await fetch(`/api/quiz/${publicId}/state`)
+        if (!cancelled && res.ok) {
+          const data = await res.json()
+          if (!cancelled) setLiveState(data)
+        }
+      } catch { /* ignore */ }
+    }
+    tick()
+    const interval = setInterval(tick, 1000)
+    return () => { cancelled = true; clearInterval(interval) }
+  }, [quiz?.status, quiz?.id, publicId])
+
+  useEffect(() => {
     if (!quiz) return
     const interval = setInterval(async () => {
       try {
@@ -97,7 +114,7 @@ export default function LiveQuizPage() {
     if (!quiz) return
     const path = `/api/quizzes/${quiz.id}/start`
     callApi(path, () => {
-      setQuiz(prev => prev ? { ...prev, status: 'RUNNING' as const } : null)
+      setQuiz(prev => prev ? { ...prev, status: 'LIVE' as const } : null)
     })
   }
 
@@ -148,19 +165,40 @@ export default function LiveQuizPage() {
     )
   }
 
-  if (!quiz || (quiz.status !== 'RUNNING' && quiz.status !== 'PUBLISHED' && quiz.status !== 'DRAFT')) {
+  if (!quiz || (quiz.status !== 'LIVE' && quiz.status !== 'WAITING_ROOM' && quiz.status !== 'DRAFT')) {
     return <div className="flex flex-1 items-center justify-center p-8"><p className="text-sm text-red-600">{error || 'Quiz not available'}</p></div>
   }
 
-  if (quiz.status !== 'RUNNING') {
+  if (quiz.status === 'WAITING_ROOM' || quiz.status === 'DRAFT') {
+    const waitingParticipants = liveState?.participants ?? []
     return (
-      <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col items-center justify-center p-8 text-center space-y-6">
-        <h1 className="text-3xl font-bold">{quiz.name}</h1>
-        <p className="text-zinc-500">Quiz is not running yet.</p>
-        <button onClick={handleStartQuestion} disabled={sending !== ''} className="rounded-lg bg-green-600 px-6 py-3 text-lg font-semibold text-white hover:bg-green-700 disabled:opacity-50">
-          {sending === `/api/quizzes/${quiz.id}/start` ? 'Starting...' : 'Start Quiz'}
-        </button>
-        <Link href={`/quiz/${publicId}/manage`} className="text-sm text-blue-600 hover:underline">Back to Manage</Link>
+      <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col p-8 space-y-6">
+        <div className="text-center space-y-4">
+          <h1 className="text-3xl font-bold">{quiz.name}</h1>
+          <p className="text-lg text-zinc-500">Question 1 of {quiz.totalQuestions}</p>
+          <div className="rounded-xl border p-6">
+            <h2 className="text-base font-semibold text-zinc-800 mb-3">Participants Ready ({waitingParticipants.length})</h2>
+            {waitingParticipants.length === 0 ? (
+              <p className="text-sm text-zinc-400">Waiting for participants to join...</p>
+            ) : (
+              <ul className="space-y-1">
+                {waitingParticipants.map(p => (
+                  <li key={p.id} className="flex items-center gap-2 rounded-md bg-zinc-50 px-3 py-2 text-sm">
+                    <span className="h-2 w-2 rounded-full bg-green-500 shrink-0" />
+                    <span className="text-black">{p.name}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+        <div className="flex justify-center">
+          <button onClick={handleStartQuestion} disabled={sending !== ''} className="rounded-lg bg-green-600 px-6 py-3 text-lg font-semibold text-white hover:bg-green-700 disabled:opacity-50">
+            {sending === `/api/quizzes/${quiz.id}/start` ? 'Starting...' : 'Start Quiz'}
+          </button>
+        </div>
+        {error && <p className="rounded bg-red-50 p-3 text-sm text-red-700 text-center">{error}</p>}
+        <Link href={`/quiz/${publicId}/manage`} className="text-center text-sm text-blue-600 hover:underline">Back to Manage</Link>
       </div>
     )
   }
@@ -183,6 +221,7 @@ export default function LiveQuizPage() {
       <div className="text-center space-y-1">
         <h1 className="text-2xl font-bold">{quiz.name}</h1>
         <span className="inline-block rounded-full bg-green-100 px-4 py-1 text-sm font-semibold text-green-700">LIVE</span>
+        {questionStatus === 'WAITING' && <span className="inline-block rounded-full bg-amber-100 px-3 py-1 text-sm font-semibold text-amber-700">Waiting</span>}
         <p className="text-lg font-semibold text-zinc-700">Question {q} / {totalQ}</p>
       </div>
 
@@ -197,7 +236,7 @@ export default function LiveQuizPage() {
           ◀ Previous
         </button>
 
-        {questionStatus === 'CLOSED' ? (
+        {questionStatus === 'WAITING' || questionStatus === 'CLOSED' ? (
           <button
             onClick={handleStartQuestion}
             disabled={sending !== ''}

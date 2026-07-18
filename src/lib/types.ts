@@ -3,7 +3,7 @@ export interface Participant {
   name: string
 }
 
-export type GameStatus = 'OPEN' | 'CLOSED'
+export type GameStatus = 'WAITING' | 'OPEN' | 'CLOSED' | 'WAITING_ROOM' | 'LIVE'
 
 export interface Buzz {
   participantId: string
@@ -21,7 +21,7 @@ export interface GameState {
   finished?: boolean
 }
 
-export type QuizStatus = 'DRAFT' | 'PUBLISHED' | 'RUNNING' | 'FINISHED' | 'ARCHIVED'
+export type QuizStatus = 'DRAFT' | 'WAITING_ROOM' | 'LIVE' | 'FINISHED' | 'ARCHIVED'
 
 export interface LiveState {
   currentQuestion: number

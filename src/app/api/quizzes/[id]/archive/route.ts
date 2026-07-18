@@ -16,7 +16,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const quiz = await getQuiz(id)
     if (!quiz) return Response.json({ error: 'Quiz not found' }, { status: 404 })
     if (quiz.organizerId !== organizerId) return Response.json({ error: 'Unauthorized' }, { status: 401 })
-    if (quiz.status === 'RUNNING') {
+    if (quiz.status === 'LIVE') {
       return Response.json({ error: 'Cannot archive a running quiz' }, { status: 409 })
     }
     if (quiz.status === 'ARCHIVED') {

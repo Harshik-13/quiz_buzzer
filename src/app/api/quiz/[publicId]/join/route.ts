@@ -11,7 +11,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ pub
     if (!quiz) {
       return Response.json({ error: 'Quiz not found' }, { status: 404 })
     }
-    if (quiz.status !== 'PUBLISHED' && quiz.status !== 'RUNNING') {
+    if (quiz.status !== 'WAITING_ROOM' && quiz.status !== 'LIVE') {
       return Response.json({ error: 'This quiz is not accepting participants' }, { status: 400 })
     }
 

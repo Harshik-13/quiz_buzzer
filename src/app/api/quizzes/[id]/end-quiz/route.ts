@@ -23,7 +23,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (quiz.status === 'ARCHIVED') {
       return Response.json({ error: 'Cannot end an archived quiz' }, { status: 409 })
     }
-    if (quiz.status !== 'RUNNING') {
+    if (quiz.status !== 'LIVE') {
       return Response.json({ error: 'Quiz is not running' }, { status: 400 })
     }
 

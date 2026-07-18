@@ -355,12 +355,12 @@ const JOIN_LUA = `
 local raw = redis.call("GET", KEYS[1])
 local state
 if not raw then
-  state = {currentQuestion=0, totalQuestions=0, status="PUBLISHED", participants={}, buzzQueue={}}
+  state = {currentQuestion=0, totalQuestions=0, status="WAITING_ROOM", participants={}, buzzQueue={}}
 else
   local ok, decoded = pcall(cjson.decode, raw)
   if not ok then return '{"error":"Failed to parse state"}' end
   state = decoded
-  if state.status ~= "PUBLISHED" and state.status ~= "RUNNING" then
+  if state.status ~= "WAITING_ROOM" and state.status ~= "LIVE" then
     return '{"error":"Quiz not accepting participants"}'
   end
 end
@@ -396,14 +396,10 @@ if state.status == "OPEN" then return '{"error":"Close question first"}' end
 local total = tonumber(ARGV[1])
 local nextQ = state.currentQuestion + 1
 if nextQ > total then
-  state.status = "CLOSED"
-  state.finished = true
-  redis.call("SET", KEYS[1], cjson.encode(state))
-  return cjson.encode({action="FINISH", currentQuestion=state.currentQuestion,
-    totalParticipants=#state.participants, winner=(state.buzzQueue[1] and state.buzzQueue[1].participantName or ""), finished=true})
+  return '{"error":"All questions completed. End the quiz to finish."}'
 end
 state.currentQuestion = nextQ
-state.status = "CLOSED"
+state.status = "WAITING"
 state.buzzQueue = {}
 redis.call("SET", KEYS[1], cjson.encode(state))
 return cjson.encode({action="NEXT", currentQuestion=nextQ, totalQuestions=total})
@@ -417,10 +413,10 @@ if not ok then return '{"error":"Failed to parse state"}' end
 local prevQ = state.currentQuestion - 1
 if prevQ < 1 then return '{"error":"Already at first question"}' end
 state.currentQuestion = prevQ
-state.status = "CLOSED"
+state.status = "WAITING"
 state.buzzQueue = {}
 redis.call("SET", KEYS[1], cjson.encode(state))
-return cjson.encode({currentQuestion=prevQ, status="CLOSED", totalQuestions=state.totalQuestions})
+return cjson.encode({currentQuestion=prevQ, status="WAITING", totalQuestions=state.totalQuestions})
 `
 
 const END_QUIZ_LUA = `
@@ -481,6 +477,10 @@ export async function atomicJoinQuiz(quizId: string, participant: Participant): 
     let state = await getQuizState(quizId)
     if (!state) {
       state = clone(DEFAULT_STATE)
+      state.status = 'WAITING_ROOM'
+    }
+    if (state.status !== 'WAITING_ROOM' && state.status !== 'LIVE') {
+      return { error: 'Quiz not accepting participants' }
     }
     for (const p of state.participants) {
       if (p.id === participant.id) return participant
@@ -520,17 +520,10 @@ export async function atomicNextQuestion(quizId: string, totalQuestions: number)
     if (state.status === 'OPEN') return { error: 'Close question first' }
     const nextQ = state.currentQuestion + 1
     if (nextQ > totalQuestions) {
-      state.status = 'CLOSED'
-      state.finished = true
-      await setQuizState(quizId, state)
-      return {
-        action: 'FINISH', currentQuestion: state.currentQuestion,
-        totalParticipants: state.participants.length,
-        winner: state.buzzQueue[0]?.participantName ?? '',
-      }
+      return { error: 'All questions completed. End the quiz to finish.' }
     }
     state.currentQuestion = nextQ
-    state.status = 'CLOSED'
+    state.status = 'WAITING'
     state.buzzQueue = []
     await setQuizState(quizId, state)
     return { action: 'NEXT', currentQuestion: nextQ, totalQuestions }
@@ -548,10 +541,10 @@ export async function atomicPreviousQuestion(quizId: string): Promise<{ currentQ
     const prevQ = state.currentQuestion - 1
     if (prevQ < 1) return { error: 'Already at first question' }
     state.currentQuestion = prevQ
-    state.status = 'CLOSED'
+    state.status = 'WAITING'
     state.buzzQueue = []
     await setQuizState(quizId, state)
-    return { currentQuestion: prevQ, status: 'CLOSED' }
+    return { currentQuestion: prevQ, status: 'WAITING' }
   })
 }
 

@@ -153,7 +153,7 @@ export default function QuizParticipantPage() {
     return <div className="flex flex-1 items-center justify-center p-8"><p className="text-sm text-zinc-400">Loading quiz...</p></div>
   }
 
-  if (quizInfo.status !== 'PUBLISHED' && quizInfo.status !== 'RUNNING' && quizInfo.status !== 'DRAFT') {
+  if (quizInfo.status !== 'WAITING_ROOM' && quizInfo.status !== 'LIVE' && quizInfo.status !== 'DRAFT') {
     return (
       <div className="flex flex-1 items-center justify-center p-8">
         <div className="w-full max-w-sm text-center space-y-4 rounded-xl border p-8 shadow-sm">
@@ -217,14 +217,23 @@ export default function QuizParticipantPage() {
     )
   }
 
+  const isLive = quizInfo.status === 'LIVE'
+
   return (
     <div className="flex flex-1 items-center justify-center p-8">
       <div className="w-full max-w-sm space-y-6 rounded-xl border p-8 text-center shadow-sm">
         <p className="text-sm text-zinc-500">Joined as <span className="font-semibold text-zinc-800">{participant.name}</span></p>
-        {q > 0 ? (
+        {!isLive && q === 0 && (
+          <p className="text-lg font-semibold text-zinc-400">Waiting for organizer to start the quiz...</p>
+        )}
+        {isLive && q === 0 && (
+          <p className="text-lg font-semibold text-zinc-400">Quiz Started — waiting for first question...</p>
+        )}
+        {q > 0 && (
           <p className="text-lg font-semibold">Question {q}{totalQuestions ? ` of ${totalQuestions}` : ''}</p>
-        ) : (
-          <p className="text-lg font-semibold text-zinc-400">Waiting for organizer to start...</p>
+        )}
+        {q > 0 && status === 'WAITING' && (
+          <p className="rounded-lg bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-500">Waiting for organizer to open the question...</p>
         )}
         {status === 'OPEN' && !hasBuzzed && (
           <button onClick={handleBuzz} disabled={buzzing} className="w-full rounded-xl bg-red-600 px-6 py-4 text-lg font-bold text-white shadow-lg hover:bg-red-700 active:scale-95 transition-transform disabled:opacity-50 disabled:cursor-not-allowed">
