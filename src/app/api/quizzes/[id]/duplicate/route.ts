@@ -10,11 +10,18 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   } catch {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  const { id } = await params
-  const quiz = await getQuiz(id)
-  if (!quiz) return Response.json({ error: 'Quiz not found' }, { status: 404 })
-  if (quiz.organizerId !== organizerId) return Response.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const copy = await duplicateQuiz(id)
-  return Response.json(copy, { status: 201 })
+  try {
+    const { id } = await params
+    const quiz = await getQuiz(id)
+    if (!quiz) return Response.json({ error: 'Quiz not found' }, { status: 404 })
+    if (quiz.organizerId !== organizerId) return Response.json({ error: 'Unauthorized' }, { status: 401 })
+
+    const copy = await duplicateQuiz(id)
+    return Response.json(copy, { status: 201 })
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Internal server error'
+    console.error('Unhandled error in duplicate:', e)
+    return Response.json({ error: `Unexpected error: ${message}` }, { status: 500 })
+  }
 }

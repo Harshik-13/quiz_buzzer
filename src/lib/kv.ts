@@ -427,8 +427,8 @@ return cjson.encode({status="CLOSED", totalParticipants=#state.participants, win
 export async function atomicBuzzForQuiz(quizId: string, participantId: string): Promise<Buzz | { error: string }> {
   const key = `quiz:${quizId}:state`
   if (kv) {
-    const result = await kv.eval<string[], string>(BUZZ_LUA, [key], [participantId])
-    return JSON.parse(result)
+    const result = await kv.eval(BUZZ_LUA, [key], [participantId])
+    return result as Buzz | { error: string }
   }
   return getMutex(quizId).exec(async () => {
     const state = await getQuizState(quizId)
@@ -449,8 +449,8 @@ export async function atomicBuzzForQuiz(quizId: string, participantId: string): 
 
 export async function atomicJoinQuiz(quizId: string, participant: Participant): Promise<Participant | { error: string }> {
   if (kv) {
-    const result = await kv.eval<string[], string>(JOIN_LUA, [`quiz:${quizId}:state`], [participant.id, participant.name])
-    return JSON.parse(result)
+    const result = await kv.eval(JOIN_LUA, [`quiz:${quizId}:state`], [participant.id, participant.name])
+    return result as Participant | { error: string }
   }
   return getMutex(quizId).exec(async () => {
     let state = await getQuizState(quizId)
@@ -468,8 +468,8 @@ export async function atomicJoinQuiz(quizId: string, participant: Participant): 
 
 export async function atomicToggleQuestion(quizId: string): Promise<{ status?: string; currentQuestion?: number; error?: string }> {
   if (kv) {
-    const result = await kv.eval<string[], string>(TOGGLE_QUESTION_LUA, [`quiz:${quizId}:state`], [])
-    return JSON.parse(result)
+    const result = await kv.eval(TOGGLE_QUESTION_LUA, [`quiz:${quizId}:state`], [])
+    return result as { status?: string; currentQuestion?: number; error?: string }
   }
   return getMutex(quizId).exec(async () => {
     const state = await getQuizState(quizId)
@@ -486,8 +486,8 @@ export async function atomicNextQuestion(quizId: string, totalQuestions: number)
   action?: string; currentQuestion?: number; error?: string; totalParticipants?: number; winner?: string
 }> {
   if (kv) {
-    const result = await kv.eval<string[], string>(NEXT_QUESTION_LUA, [`quiz:${quizId}:state`], [String(totalQuestions)])
-    return JSON.parse(result)
+    const result = await kv.eval(NEXT_QUESTION_LUA, [`quiz:${quizId}:state`], [String(totalQuestions)])
+    return result as { action?: string; currentQuestion?: number; error?: string; totalParticipants?: number; winner?: string }
   }
   return getMutex(quizId).exec(async () => {
     const state = await getQuizState(quizId)
@@ -513,8 +513,8 @@ export async function atomicNextQuestion(quizId: string, totalQuestions: number)
 
 export async function atomicPreviousQuestion(quizId: string): Promise<{ currentQuestion?: number; status?: string; error?: string }> {
   if (kv) {
-    const result = await kv.eval<string[], string>(PREVIOUS_QUESTION_LUA, [`quiz:${quizId}:state`], [])
-    return JSON.parse(result)
+    const result = await kv.eval(PREVIOUS_QUESTION_LUA, [`quiz:${quizId}:state`], [])
+    return result as { currentQuestion?: number; status?: string; error?: string }
   }
   return getMutex(quizId).exec(async () => {
     const state = await getQuizState(quizId)
@@ -531,8 +531,8 @@ export async function atomicPreviousQuestion(quizId: string): Promise<{ currentQ
 
 export async function atomicEndQuiz(quizId: string): Promise<{ status?: string; error?: string; totalParticipants?: number; winner?: string }> {
   if (kv) {
-    const result = await kv.eval<string[], string>(END_QUIZ_LUA, [`quiz:${quizId}:state`], [])
-    return JSON.parse(result)
+    const result = await kv.eval(END_QUIZ_LUA, [`quiz:${quizId}:state`], [])
+    return result as { status?: string; error?: string; totalParticipants?: number; winner?: string }
   }
   return getMutex(quizId).exec(async () => {
     const state = await getQuizState(quizId)

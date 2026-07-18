@@ -10,22 +10,32 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   } catch {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  const { id } = await params
-  const quiz = await getQuiz(id)
-  if (!quiz) return Response.json({ error: 'Quiz not found' }, { status: 404 })
-  if (quiz.organizerId !== organizerId) return Response.json({ error: 'Unauthorized' }, { status: 401 })
-  if (quiz.status !== 'RUNNING') {
-    return Response.json({ error: 'Quiz is not running' }, { status: 400 })
+
+  try {
+    const { id } = await params
+    const quiz = await getQuiz(id)
+    if (!quiz) return Response.json({ error: 'Quiz not found' }, { status: 404 })
+    if (quiz.organizerId !== organizerId) return Response.json({ error: 'Unauthorized' }, { status: 401 })
+    if (quiz.status !== 'RUNNING') {
+      return Response.json({ error: 'Quiz is not running' }, { status: 400 })
+    }
+
+    const state = await getQuizState(id)
+    if (!state) {
+      return Response.json({ error: 'No game state found for this quiz' }, { status: 409 })
+    }
+    if (state.status !== 'OPEN') {
+      return Response.json({ error: 'Question is not open' }, { status: 400 })
+    }
+
+    state.status = 'CLOSED'
+    await setQuizState(id, state)
+    await updateQuiz(id, { questionStatus: 'CLOSED', currentQuestion: state.currentQuestion })
+
+    return Response.json({ currentQuestion: state.currentQuestion, status: 'CLOSED' })
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Internal server error'
+    console.error('Unhandled error in end:', e)
+    return Response.json({ error: `Unexpected error: ${message}` }, { status: 500 })
   }
-
-  const state = await getQuizState(id)
-  if (!state || state.status !== 'OPEN') {
-    return Response.json({ error: 'Question is not open' }, { status: 400 })
-  }
-
-  state.status = 'CLOSED'
-  await setQuizState(id, state)
-  await updateQuiz(id, { questionStatus: 'CLOSED', currentQuestion: state.currentQuestion })
-
-  return Response.json({ currentQuestion: state.currentQuestion, status: 'CLOSED' })
 }

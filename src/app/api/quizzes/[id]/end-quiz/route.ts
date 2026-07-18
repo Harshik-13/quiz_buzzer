@@ -10,32 +10,49 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   } catch {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  const { id } = await params
-  const quiz = await getQuiz(id)
-  if (!quiz) return Response.json({ error: 'Quiz not found' }, { status: 404 })
-  if (quiz.organizerId !== organizerId) return Response.json({ error: 'Unauthorized' }, { status: 401 })
-  if (quiz.status !== 'RUNNING') {
-    return Response.json({ error: 'Quiz is not running' }, { status: 400 })
-  }
 
-  const result = await atomicEndQuiz(id)
+  try {
+    const { id } = await params
+    const quiz = await getQuiz(id)
+    if (!quiz) return Response.json({ error: 'Quiz not found' }, { status: 404 })
+    if (quiz.organizerId !== organizerId) return Response.json({ error: 'Unauthorized' }, { status: 401 })
 
-  await updateQuiz(id, {
-    status: 'FINISHED',
-    questionStatus: 'CLOSED',
-    currentQuestion: quiz.currentQuestion,
-    statistics: {
-      totalParticipants: result.totalParticipants ?? quiz.participants.length,
+    if (quiz.status === 'FINISHED') {
+      return Response.json({ error: 'Quiz is already finished' }, { status: 409 })
+    }
+    if (quiz.status === 'ARCHIVED') {
+      return Response.json({ error: 'Cannot end an archived quiz' }, { status: 409 })
+    }
+    if (quiz.status !== 'RUNNING') {
+      return Response.json({ error: 'Quiz is not running' }, { status: 400 })
+    }
+
+    const result = await atomicEndQuiz(id)
+    if (result.error) {
+      return Response.json({ error: result.error }, { status: 409 })
+    }
+
+    await updateQuiz(id, {
+      status: 'FINISHED',
+      questionStatus: 'CLOSED',
+      currentQuestion: quiz.currentQuestion,
+      statistics: {
+        totalParticipants: result.totalParticipants ?? quiz.participants.length,
+        totalQuestions: quiz.totalQuestions,
+        winner: result.winner || quiz.buzzQueue[0]?.participantName || '',
+        completionTime: Date.now() - (quiz.lastPlayedAt || Date.now()),
+        fastestBuzz: 0,
+      },
+    })
+
+    return Response.json({
+      status: 'FINISHED',
+      currentQuestion: quiz.currentQuestion,
       totalQuestions: quiz.totalQuestions,
-      winner: result.winner || quiz.buzzQueue[0]?.participantName || '',
-      completionTime: Date.now() - (quiz.lastPlayedAt || Date.now()),
-      fastestBuzz: 0,
-    },
-  })
-
-  return Response.json({
-    status: 'FINISHED',
-    currentQuestion: quiz.currentQuestion,
-    totalQuestions: quiz.totalQuestions,
-  })
+    })
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Internal server error'
+    console.error('Unhandled error in end-quiz:', e)
+    return Response.json({ error: `Unexpected error: ${message}` }, { status: 500 })
+  }
 }
