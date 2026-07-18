@@ -160,10 +160,10 @@ export default function LiveQuizPage() {
     )
   }
 
-  const q = liveState?.currentQuestion ?? quiz.currentQuestion
-  const questionStatus = liveState?.status ?? quiz.questionStatus
-  const participants = liveState?.participants ?? quiz.participants
-  const buzzQueue = liveState?.buzzQueue ?? quiz.buzzQueue
+  const q = liveState?.currentQuestion ?? 0
+  const questionStatus = liveState?.status ?? 'CLOSED'
+  const participants = liveState?.participants ?? []
+  const buzzQueue = liveState?.buzzQueue ?? []
   const totalQ = quiz.totalQuestions
   const isFirstQuestion = q <= 1
   const isLastQuestion = q >= totalQ

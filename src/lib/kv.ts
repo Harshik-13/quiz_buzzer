@@ -1,5 +1,5 @@
 import { createClient } from '@vercel/kv'
-import type { Buzz, GameState, Participant, Quiz } from './types'
+import type { Buzz, GameState, GameStatus, Participant, Quiz } from './types'
 import { v4 as uuid } from 'uuid'
 import { getOrganizerId } from './admin'
 
@@ -201,10 +201,6 @@ export async function createQuiz(data: { name: string; description?: string; tot
     description: data.description || '',
     totalQuestions: data.totalQuestions,
     status: 'DRAFT',
-    currentQuestion: 0,
-    questionStatus: 'CLOSED',
-    participants: [],
-    buzzQueue: [],
     createdAt: now,
     updatedAt: now,
   }
@@ -284,10 +280,6 @@ export async function duplicateQuiz(id: string): Promise<Quiz | null> {
     description: original.description,
     totalQuestions: original.totalQuestions,
     status: 'DRAFT',
-    currentQuestion: 0,
-    questionStatus: 'CLOSED',
-    participants: [],
-    buzzQueue: [],
     createdAt: now,
     updatedAt: now,
   }
@@ -309,29 +301,28 @@ export async function duplicateQuiz(id: string): Promise<Quiz | null> {
   return quiz
 }
 
-export async function activateQuiz(id: string): Promise<Quiz | null> {
+export async function activateQuiz(id: string, currentQuestion: number, status: GameStatus): Promise<void> {
   requireKv()
-  const quiz = await getQuiz(id)
-  if (!quiz) return null
-
   const existing = await getQuizState(id)
   if (existing) {
-    existing.currentQuestion = quiz.currentQuestion
-    existing.totalQuestions = quiz.totalQuestions
-    existing.status = quiz.questionStatus
+    existing.currentQuestion = currentQuestion
+    existing.status = status
+    existing.buzzQueue = []
     await setQuizState(id, existing)
-    return quiz
+    return
   }
 
+  const quiz = await getQuiz(id)
+  if (!quiz) throw new Error('Quiz not found')
+
   const gameState: GameState = {
-    currentQuestion: quiz.currentQuestion,
+    currentQuestion,
     totalQuestions: quiz.totalQuestions,
-    status: quiz.questionStatus,
-    participants: [...(quiz.participants || [])],
-    buzzQueue: [...(quiz.buzzQueue || [])],
+    status,
+    participants: [],
+    buzzQueue: [],
   }
   await setQuizState(id, gameState)
-  return quiz
 }
 
 // ── Lua Scripts ──

@@ -246,7 +246,6 @@ export default function DashboardPage() {
               <div className="flex flex-wrap gap-1.5 text-xs text-zinc-400">
                 <span>Created {formatDate(q.createdAt)}</span>
                 {q.lastPlayedAt && <span>· Last played {formatDate(q.lastPlayedAt)}</span>}
-                <span>· {q.participants.length} participants</span>
               </div>
 
               <div className="flex flex-wrap gap-2 pt-1">

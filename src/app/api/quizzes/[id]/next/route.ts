@@ -28,8 +28,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (result.action === 'FINISH') {
       await updateQuiz(id, {
         status: 'FINISHED',
-        questionStatus: 'CLOSED',
-        currentQuestion: result.currentQuestion,
         statistics: {
           totalParticipants: result.totalParticipants ?? 0,
           totalQuestions: quiz.totalQuestions,
@@ -41,18 +39,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       return Response.json({ status: 'FINISHED', currentQuestion: result.currentQuestion, totalQuestions: quiz.totalQuestions })
     }
 
-    await updateQuiz(id, {
-      currentQuestion: result.currentQuestion,
-      questionStatus: 'CLOSED',
-      buzzQueue: [],
-    })
-
-    const isLast = (result.currentQuestion ?? 0) >= quiz.totalQuestions
     return Response.json({
       currentQuestion: result.currentQuestion,
       totalQuestions: quiz.totalQuestions,
       status: 'CLOSED',
-      isLastQuestion: isLast,
     })
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Internal server error'

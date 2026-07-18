@@ -50,10 +50,6 @@ export interface Quiz {
   description: string
   totalQuestions: number
   status: QuizStatus
-  currentQuestion: number
-  questionStatus: GameStatus
-  participants: Participant[]
-  buzzQueue: Buzz[]
   createdAt: number
   updatedAt: number
   lastPlayedAt?: number

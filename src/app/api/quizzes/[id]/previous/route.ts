@@ -1,5 +1,5 @@
 import { requireAdmin } from '@/lib/admin'
-import { getQuiz, updateQuiz, atomicPreviousQuestion } from '@/lib/kv'
+import { getQuiz, atomicPreviousQuestion } from '@/lib/kv'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,12 +24,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (result.error) {
       return Response.json({ error: result.error }, { status: 400 })
     }
-
-    await updateQuiz(id, {
-      currentQuestion: result.currentQuestion,
-      questionStatus: 'CLOSED',
-      buzzQueue: [],
-    })
 
     return Response.json({
       currentQuestion: result.currentQuestion,

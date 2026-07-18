@@ -98,10 +98,10 @@ export default function QuizManagePage() {
   if (loading) return <div className="flex flex-1 items-center justify-center p-8"><p className="text-sm text-zinc-400">Loading...</p></div>
   if (!quiz) return <div className="flex flex-1 items-center justify-center p-8"><p className="text-sm text-red-600">{error || 'Quiz not found'}</p></div>
 
-  const q = state?.currentQuestion ?? quiz.currentQuestion
-  const questionStatus = state?.status ?? (quiz.status === 'RUNNING' ? quiz.questionStatus : 'CLOSED')
-  const participants = state?.participants ?? quiz.participants
-  const buzzQueue = state?.buzzQueue ?? quiz.buzzQueue
+  const q = state?.currentQuestion ?? 0
+  const questionStatus = state?.status ?? 'CLOSED'
+  const participants = state?.participants ?? []
+  const buzzQueue = state?.buzzQueue ?? []
   const isLastQuestion = q >= quiz.totalQuestions
 
   return (

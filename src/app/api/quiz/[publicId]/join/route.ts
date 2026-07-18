@@ -1,4 +1,4 @@
-import { getQuizByPublicId, getQuizState, atomicJoinQuiz, updateQuiz } from '@/lib/kv'
+import { getQuizByPublicId, atomicJoinQuiz } from '@/lib/kv'
 import type { Participant } from '@/lib/types'
 import { v4 as uuid } from 'uuid'
 
@@ -44,8 +44,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ pub
     if ('error' in result) {
       return Response.json(result, { status: 400 })
     }
-
-    await updateQuiz(quiz.id, { participants: (await getQuizState(quiz.id))?.participants ?? [result] })
 
     return Response.json({ id: result.id, name: result.name })
   } catch (e) {

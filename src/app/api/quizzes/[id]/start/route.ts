@@ -28,12 +28,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       const firstQuestion = 1
       await updateQuiz(id, {
         status: 'RUNNING',
-        currentQuestion: firstQuestion,
-        questionStatus: 'OPEN',
-        buzzQueue: [],
         lastPlayedAt: Date.now(),
       })
-      await activateQuiz(id)
+      await activateQuiz(id, firstQuestion, 'OPEN')
 
       return Response.json({ status: 'RUNNING', currentQuestion: firstQuestion, totalQuestions: quiz.totalQuestions, questionStatus: 'OPEN' })
     }
@@ -42,8 +39,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (result.error) {
       return Response.json({ error: result.error }, { status: 400 })
     }
-
-    await updateQuiz(id, { questionStatus: 'OPEN', buzzQueue: [] })
 
     return Response.json({ currentQuestion: result.currentQuestion, status: 'OPEN', totalQuestions: quiz.totalQuestions })
   } catch (e) {

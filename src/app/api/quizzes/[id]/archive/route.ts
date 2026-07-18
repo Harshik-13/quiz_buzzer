@@ -1,5 +1,5 @@
 import { requireAdmin } from '@/lib/admin'
-import { getQuiz, updateQuiz } from '@/lib/kv'
+import { getQuiz, updateQuiz, getQuizState, setQuizState } from '@/lib/kv'
 
 export const dynamic = 'force-dynamic'
 
@@ -23,10 +23,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       return Response.json({ error: 'Quiz is already archived' }, { status: 409 })
     }
 
-    const updated = await updateQuiz(id, {
-      status: 'ARCHIVED',
-      questionStatus: 'CLOSED',
-    })
+    const state = await getQuizState(id)
+    if (state) {
+      state.status = 'CLOSED'
+      await setQuizState(id, state)
+    }
+
+    const updated = await updateQuiz(id, { status: 'ARCHIVED' })
     return Response.json(updated)
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Internal server error'
