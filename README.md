@@ -25,11 +25,12 @@ Organizer  ──────>│  /dashboard          │<── GET/POST /api/
                                                POST /api/quizzes/:id/end-quiz
                                                POST /api/quizzes/:id/duplicate
                                                POST /api/quizzes/:id/archive
-                  ┌─────────────────────┐
-                  │  Vercel KV (Redis)   │<── per-quiz state keys
-                  │  or in-memory (dev)  │    quiz:{id}:state
-                  └─────────────────────┘    publicId:{pubId} → quizId
-                                             quiz:index → [id, ...]
+                   ┌─────────────────────┐
+                   │  Vercel KV (Redis)   │<── KEYS:
+                   │  or in-memory (dev)  │    quiz:{id}          — metadata (name, status, …)
+                   └─────────────────────┘    quiz:{id}:state      — RUNTIME state ONLY
+                                              publicId:{pubId}→id   — publicId index
+                                              quiz:index → [id, …] — all quiz IDs
 ```
 
 ## Folder Structure
@@ -49,7 +50,8 @@ src/
       auth/route.ts                 POST — verify admin secret
       quizzes/route.ts              GET — list quizzes (admin), POST — create quiz (admin)
       quizzes/[id]/route.ts         GET/PUT/DELETE — quiz CRUD (admin)
-      quizzes/[id]/start/route.ts   POST — start quiz or toggle question (admin)
+      quizzes/[id]/start/route.ts   POST — start quiz or open question (admin)
+      quizzes/[id]/close/route.ts   POST — close current question (admin)
       quizzes/[id]/next/route.ts    POST — advance question (admin)
       quizzes/[id]/previous/route.tsPOST — go back one question (admin)
       quizzes/[id]/end-quiz/route.tsPOST — finish quiz (admin)
@@ -70,10 +72,10 @@ src/
 ```
 DRAFT ──[Publish]──> PUBLISHED ──[Start]──> RUNNING ──[End Quiz]──> FINISHED
                   \                              │
-                   └── participant can join       ├── [Start]  → OPEN (buzzing open)
-                                                  ├── [End]    → CLOSED (buzzing closed)
-                                                  ├── [Next]   → question++ → CLOSED
-                                                  └── [Prev]   → question-- → CLOSED
+                   └── participant can join       ├── [Start] → OPEN (buzzing open)
+                                                  ├── [Close] → CLOSED (buzzing closed)
+                                                  ├── [Next]  → question++ → CLOSED
+                                                  └── [Prev]  → question-- → CLOSED
 
 ARCHIVED (can be archived from any state except RUNNING)
 ```
@@ -84,6 +86,7 @@ ARCHIVED (can be archived from any state except RUNNING)
 |---|---|---|
 | `ADMIN_SECRET` | Yes | Secret key for organizer endpoints. Sent as `x-admin-secret` header. |
 | `KV_REST_API_URL` | For production | Vercel KV REST API URL (auto-injected by Vercel, or set manually) |
+| `KV_URL` | For production | Alternative to `KV_REST_API_URL` (some Vercel KV integrations set this) |
 | `KV_REST_API_TOKEN` | For production | Vercel KV REST API token (auto-injected by Vercel, or set manually) |
 
 Without KV variables, the app uses an in-memory store (**development only** — state resets on server restart, not shared across instances).
@@ -114,7 +117,7 @@ KV variables are injected automatically by Vercel when KV is linked. The app **r
 
 #### `GET /api/quiz/:publicId`
 
-Returns quiz metadata (name, description, totalQuestions, status, participantCount). Returns 410 for archived quizzes.
+Returns quiz metadata (name, description, totalQuestions, status, participantCount from game state). Returns 410 for archived quizzes.
 
 #### `GET /api/quiz/:publicId/state`
 
@@ -150,13 +153,16 @@ Update quiz fields (name, description, totalQuestions, status). Ownership checke
 Delete quiz. Ownership checked.
 
 #### `POST /api/quizzes/:id/start`
-Start a DRAFT/PUBLISHED quiz (transitions to RUNNING, opens question 1). If already RUNNING, toggles the current question from CLOSED to OPEN (atomically clears buzzQueue).
+Start a DRAFT/PUBLISHED quiz (transitions to RUNNING, opens question 1). If already RUNNING, opens the current question (atomically clears buzzQueue).
+
+#### `POST /api/quizzes/:id/close`
+Close the current question (prevents further buzzes). Preserves existing buzz queue. Must be RUNNING and question must be OPEN.
 
 #### `POST /api/quizzes/:id/next`
-Advance to the next question. If past the last question, finishes the quiz with statistics (winner, completion time).
+Advance to the next question (closes current). If past the last question, finishes the quiz with statistics (winner, completion time).
 
 #### `POST /api/quizzes/:id/previous`
-Go back one question. Cannot go below question 1.
+Go back one question (closes current). Cannot go below question 1.
 
 #### `POST /api/quizzes/:id/end-quiz`
 Finish the quiz immediately with current statistics.
@@ -176,7 +182,10 @@ All state mutations use either Redis Lua scripts (production) or in-memory per-q
 - **Start/Next/Previous/End-Quiz** — no interleaved or lost updates
 
 ### Quiz Isolation
-Each quiz has its own state key (`quiz:{id}:state`). Operations on one quiz never affect another. The legacy global `game:state` key is no longer written by any per-quiz operation.
+Each quiz has its own state key (`quiz:{id}:state`). Operations on one quiz never affect another.
+
+### Single Source of Truth for Runtime State
+Runtime data (participants, buzzQueue, currentQuestion, questionStatus) lives **only** in `quiz:{id}:state`. The quiz document (`quiz:{id}`) stores metadata only — no runtime fields are duplicated. All state mutations go through atomic Lua scripts (production) or per-quiz mutexes (dev), ensuring consistency under concurrent access.
 
 ### Security
 - No public quiz listing — participants must have the direct link
